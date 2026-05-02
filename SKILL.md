@@ -24,11 +24,11 @@ Do not require cloud transcription or runtime AI calls from the generated webpag
 
 ## Workflow
 
-1. Create a working output directory outside the skill package, for example `lesson-output/<slug>/`.
+1. Create a generated material directory outside the reusable skill/template source, for example `materials/<slug>/`.
 2. Run media preparation:
 
    ```bash
-   python3 scripts/prepare_media.py /path/to/media.mp4 --out lesson-output/my-lesson --source-language en --target-language Chinese
+   python3 scripts/prepare_media.py /path/to/media.mp4 --out materials/my-lesson --source-language en --target-language Chinese
    ```
 
    This extracts audio, runs local Whisper, detects pauses, and writes `lesson.draft.json` plus `ai_batches/*.json`.
@@ -39,22 +39,22 @@ Do not require cloud transcription or runtime AI calls from the generated webpag
    python3 scripts/split_transcription.py /path/to/media.mp4
    ```
 
-   This writes `transcription_chunks.json` in the current working directory with `{ "timeStart", "timeEnd", "origin", "translated" }[]`. Leave `translated` empty for Codex/cc to fill with Chinese later.
+   This writes `materials/<media-name>/chunks.json` with `{ "timeStart", "timeEnd", "origin", "translated" }[]`. Leave `translated` empty for Codex/cc to fill with Chinese later.
 
 3. Use Codex/cc to fill each AI batch. Preserve every chunk `id`; add `translation`, `readThrough`, and `vocabulary`.
 4. Merge filled batches:
 
    ```bash
-   python3 scripts/merge_batches.py lesson-output/my-lesson/lesson.draft.json lesson-output/my-lesson/ai_filled/*.json --out lesson-output/my-lesson/lesson.json
+   python3 scripts/merge_batches.py materials/my-lesson/lesson.draft.json materials/my-lesson/ai_filled/*.json --out materials/my-lesson/lesson.json
    ```
 
 5. Validate:
 
    ```bash
-   python3 scripts/validate_lesson.py lesson-output/my-lesson/lesson.json
+   python3 scripts/validate_lesson.py materials/my-lesson/lesson.json
    ```
 
-6. Copy `assets/vite-template/` to the output directory, replace `data/lesson.json`, and copy or symlink the media into `public/media/`. Keep the lesson media path relative to the Vite public root, such as `/media/source.mp4`.
+6. Keep generated lesson files under `materials/<slug>/`. Symlink or copy the active material lesson into `assets/vite-template/data/lesson.json`, and copy or symlink the media into `assets/vite-template/public/media/`. Keep the lesson media path relative to the Vite public root, such as `/media/source.mp4`.
 7. Run the generated page:
 
    ```bash
