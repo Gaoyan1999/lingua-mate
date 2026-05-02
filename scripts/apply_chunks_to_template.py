@@ -80,7 +80,7 @@ def link_lesson(lesson_path: Path, template_lesson_path: Path) -> None:
         if template_lesson_path.is_symlink() and template_lesson_path.resolve() == lesson_path.resolve():
             return
         if template_lesson_path.is_dir():
-            raise SystemExit(f"Template lesson path is a directory: {template_lesson_path}")
+            raise SystemExit(f"Template Library path is a directory: {template_lesson_path}")
         template_lesson_path.unlink()
     relative_target = os.path.relpath(lesson_path.resolve(), template_lesson_path.parent.resolve())
     template_lesson_path.symlink_to(relative_target)
@@ -100,14 +100,14 @@ def update_lesson_index(index_path: Path, entry: dict[str, Any]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Apply transcription_chunks.json to the Vite lesson template.")
+    parser = argparse.ArgumentParser(description="Apply transcription_chunks.json to the Vite Library template.")
     parser.add_argument("--chunks", type=Path, default=Path("transcription_chunks.json"))
     parser.add_argument("--media", type=Path, required=True)
     parser.add_argument("--template", type=Path, default=Path("assets/vite-template"))
-    parser.add_argument("--lesson-out", type=Path, help="Canonical lesson JSON output path.")
-    parser.add_argument("--lesson-id", help="Stable id used in the template lesson list. Defaults to the lesson title slug.")
-    parser.add_argument("--lesson-title", help="Display title used in the lesson and template lesson list.")
-    parser.add_argument("--link-template", action="store_true", help="Register the lesson in the Vite template public data.")
+    parser.add_argument("--lesson-out", type=Path, help="Canonical Library JSON output path.")
+    parser.add_argument("--lesson-id", help="Stable id used in the template Library list. Defaults to the Library title slug.")
+    parser.add_argument("--lesson-title", help="Display title used in the Library item and template Library list.")
+    parser.add_argument("--link-template", action="store_true", help="Register the Library item in the Vite template public data.")
     return parser.parse_args()
 
 
@@ -151,7 +151,7 @@ def main() -> int:
     print(f"Wrote {lesson_path.resolve()}")
     print(f"Media path: {public_media_path}")
     if args.link_template:
-        print(f"Registered lesson: {lesson_id}")
+        print(f"Registered Library item: {lesson_id}")
     print(f"Chunks: {len(lesson['chunks'])}")
     return 0
 

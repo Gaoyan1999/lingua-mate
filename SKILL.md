@@ -34,7 +34,7 @@ Do not stop after transcription unless the user explicitly asks for transcript-o
 
 ## Preferred Material Layout
 
-Prefer a single top-level `materials/` folder for user media and generated lesson data. Each resource should have its own folder named after the source media, for example:
+Prefer a single top-level `materials/` folder for user media and generated Library data. Each resource should have its own folder named after the source media, for example:
 
 ```text
 materials/
@@ -78,13 +78,13 @@ The resource folder should contain the original video or podcast file plus gener
    python3 scripts/validate_lesson.py materials/S10E01/lesson.json
    ```
 
-6. Keep generated lesson files under `materials/<slug>/`. Register each lesson with the Vite template so the homepage can list multiple lessons:
+6. Keep generated Library files under `materials/<slug>/`. Register each Library item with the Vite template so the homepage can list multiple Library items:
 
    ```bash
    python3 scripts/apply_chunks_to_template.py --chunks materials/S10E01/chunks.json --media materials/S10E01/S10E01.mp4 --lesson-out materials/S10E01/lesson.json --lesson-id S10E01 --link-template
    ```
 
-   This updates `assets/vite-template/public/data/lessons.json`, links the lesson under `assets/vite-template/public/data/lessons/<lesson-id>.json`, and keeps `assets/vite-template/public/data/lesson.json` as the latest lesson fallback. Copy or symlink media into `assets/vite-template/public/media/`. Keep media paths relative to the Vite public root, such as `/media/source.mp4`.
+   This updates `assets/vite-template/public/data/lessons.json`, links the Library item under `assets/vite-template/public/data/lessons/<lesson-id>.json`, and keeps `assets/vite-template/public/data/lesson.json` as the latest Library fallback. Copy or symlink media into `assets/vite-template/public/media/`. Keep media paths relative to the Vite public root, such as `/media/source.mp4`.
 7. Run the generated page:
 
    ```bash
@@ -94,7 +94,7 @@ The resource folder should contain the original video or podcast file plus gener
 
 For previewing this skill package's bundled template from the repo root, run `pnpm template:install` once and then `pnpm dev`.
 
-## Lesson JSON Shape
+## Library JSON Shape
 
 The final `lesson.json` must have:
 
@@ -109,14 +109,14 @@ Each vocabulary item should explain one English word or phrase for a Chinese-spe
 - `nuance`
 - `example`
 
-The optional `lessons.json` homepage index should be:
+The optional `lessons.json` Library index should be:
 
 ```json
 {
   "lessons": [
     {
       "id": "my-lesson",
-      "title": "My Lesson",
+      "title": "My Library Item",
       "lessonPath": "/data/lessons/my-lesson.json",
       "mediaType": "video",
       "duration": 123,
@@ -141,4 +141,4 @@ The optional `lessons.json` homepage index should be:
 - Confirm subtitle highlighting follows playback time.
 - Confirm every chunk has monotonic timestamps and non-empty source text.
 - Confirm generated JSON passes `scripts/validate_lesson.py`.
-- For long lessons, generate and merge AI batches instead of placing all content inline in app code.
+- For long Library items, generate and merge AI batches instead of placing all content inline in app code.

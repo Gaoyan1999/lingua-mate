@@ -150,7 +150,7 @@ class TranslateChunksTests(unittest.TestCase):
 
 class ApplyChunksToTemplateTests(unittest.TestCase):
     def test_slugify_normalizes_lesson_id(self):
-        self.assertEqual(apply_chunks_to_template.slugify("My Lesson: 01", "fallback"), "my-lesson-01")
+        self.assertEqual(apply_chunks_to_template.slugify("My Library: 01", "fallback"), "my-library-01")
         self.assertEqual(apply_chunks_to_template.slugify("!!!", "fallback"), "fallback")
 
     def test_update_lesson_index_replaces_existing_entry(self):

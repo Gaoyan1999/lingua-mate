@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a Lingua Mate lesson JSON file."""
+"""Validate a Lingua Mate Library JSON file."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ def validate_lesson(data: Any, allow_draft: bool = False) -> list[str]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validate a Lingua Mate lesson JSON file.")
+    parser = argparse.ArgumentParser(description="Validate a Lingua Mate Library JSON file.")
     parser.add_argument("lesson", type=Path)
     parser.add_argument("--allow-draft", action="store_true", help="Allow empty translation and readThrough fields.")
     return parser.parse_args()
@@ -113,7 +113,7 @@ def main() -> int:
         for error in errors:
             print(error)
         return 1
-    print(f"Valid lesson: {args.lesson}")
+    print(f"Valid Library JSON: {args.lesson}")
     return 0
 
 
