@@ -59,5 +59,10 @@ Generated content is intentionally ignored by git. The canonical generated mater
 materials/s10e01/
 ```
 
-The reusable source code lives in `scripts/`, `assets/vite-template/`, `tests/`, and `SKILL.md`.
+When applying a generated lesson to the reusable Vite template, link or copy the active lesson JSON to:
 
+```text
+assets/vite-template/public/data/lesson.json
+```
+
+The reusable source code lives in `scripts/`, `assets/vite-template/`, `tests/`, and `SKILL.md`.

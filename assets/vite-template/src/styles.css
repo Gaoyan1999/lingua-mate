@@ -42,9 +42,12 @@ button {
   align-items: stretch;
 }
 
+.lesson-stage.study-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .media-column,
-.study-column,
-.transcript-area {
+.study-column {
   border: 1px solid #d9d0c4;
   background: #fffdf8;
   box-shadow: 0 18px 48px rgb(39 46 47 / 10%);
@@ -64,7 +67,8 @@ button {
 }
 
 .title-row,
-.transcript-toolbar {
+.lyrics-toolbar,
+.study-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -118,6 +122,34 @@ h3 {
   font-weight: 720;
 }
 
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel-toggle,
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border: 1px solid #c9d5d1;
+  background: #f8fbf8;
+  color: #203230;
+}
+
+.panel-toggle {
+  gap: 8px;
+  padding: 0 13px;
+  white-space: nowrap;
+}
+
+.icon-button {
+  width: 42px;
+  padding: 0;
+}
+
 .media-frame {
   display: grid;
   min-height: 320px;
@@ -140,26 +172,13 @@ audio {
   padding: 32px;
 }
 
-.subtitle-panel {
-  min-height: 132px;
-  padding: 18px;
-  border-left: 4px solid #d95f43;
-  background: #f6efe5;
-}
-
-.source-line {
-  margin-bottom: 10px;
-  color: #151b1c;
-  font-size: clamp(1.1rem, 1.6vw, 1.45rem);
-  font-weight: 740;
-  line-height: 1.38;
-}
-
-.translation-line {
-  margin-bottom: 0;
-  color: #51615f;
-  font-size: 1rem;
-  line-height: 1.55;
+.lyrics-panel {
+  display: grid;
+  gap: 12px;
+  min-height: 260px;
+  padding: 16px;
+  border: 1px solid #e2dbd2;
+  background: #fbf8f2;
 }
 
 .control-row {
@@ -169,6 +188,8 @@ audio {
 }
 
 .control-row button,
+.panel-toggle,
+.icon-button,
 .speed-control,
 .search-box {
   display: inline-flex;
@@ -202,6 +223,10 @@ input {
   gap: 8px;
   margin-bottom: 10px;
   color: #22302f;
+}
+
+.study-header {
+  padding-bottom: 2px;
 }
 
 .readthrough,
@@ -250,14 +275,13 @@ input {
   color: #6a7774;
 }
 
-.transcript-area {
-  margin-top: 20px;
-  padding: 18px;
+.search-box {
+  width: min(420px, 100%);
+  padding: 0 12px;
 }
 
-.search-box {
-  width: min(460px, 100%);
-  padding: 0 12px;
+.search-box.compact {
+  width: min(380px, 100%);
 }
 
 .search-box input {
@@ -265,31 +289,43 @@ input {
   min-width: 0;
 }
 
-.chunk-list {
+.lyrics-list {
   display: grid;
   gap: 8px;
-  margin-top: 16px;
+  max-height: 310px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scroll-padding-block: 110px;
 }
 
-.chunk-row {
+.lyric-row {
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
   gap: 16px;
   width: 100%;
-  min-height: 76px;
-  padding: 12px;
-  border: 1px solid #e1d8ce;
-  background: #fffdf8;
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  background: transparent;
   color: inherit;
   text-align: left;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    opacity 160ms ease;
 }
 
-.chunk-row.playing {
+.lyric-row:hover {
+  background: #fffdf8;
+}
+
+.lyric-row.playing {
   border-color: #2e7f76;
   background: #eef8f5;
 }
 
-.chunk-row.selected {
+.lyric-row.selected {
   box-shadow: inset 4px 0 0 #d95f43;
 }
 
@@ -299,18 +335,19 @@ input {
   font-weight: 720;
 }
 
-.chunk-text {
+.lyric-text {
   display: grid;
   gap: 6px;
   min-width: 0;
 }
 
-.chunk-text strong {
+.lyric-text strong {
   color: #171d1e;
+  font-size: clamp(1.05rem, 1.35vw, 1.35rem);
   line-height: 1.35;
 }
 
-.chunk-text span {
+.lyric-text span {
   color: #596866;
   line-height: 1.45;
 }
@@ -325,12 +362,20 @@ input {
   }
 
   .title-row,
-  .transcript-toolbar {
+  .lyrics-toolbar,
+  .study-header {
     align-items: flex-start;
     flex-direction: column;
   }
 
+  .title-actions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
   .time-badge,
+  .panel-toggle,
   .search-box {
     width: 100%;
   }
@@ -339,7 +384,11 @@ input {
     min-height: 220px;
   }
 
-  .chunk-row {
+  .lyrics-list {
+    max-height: 300px;
+  }
+
+  .lyric-row {
     grid-template-columns: 1fr;
     gap: 8px;
   }

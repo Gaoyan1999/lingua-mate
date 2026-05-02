@@ -21,4 +21,5 @@ transcription_chunks.json
 *_transcript.srt
 *_transcript.vtt
 assets/vite-template/data/lesson.json
+assets/vite-template/public/data/lesson.json
 assets/vite-template/public/media/

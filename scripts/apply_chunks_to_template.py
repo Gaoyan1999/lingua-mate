@@ -82,7 +82,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--media", type=Path, required=True)
     parser.add_argument("--template", type=Path, default=Path("assets/vite-template"))
     parser.add_argument("--lesson-out", type=Path, help="Canonical lesson JSON output path.")
-    parser.add_argument("--link-template", action="store_true", help="Symlink template data/lesson.json to --lesson-out.")
+    parser.add_argument("--link-template", action="store_true", help="Symlink template public/data/lesson.json to --lesson-out.")
     return parser.parse_args()
 
 
@@ -91,7 +91,7 @@ def main() -> int:
     chunks_path = args.chunks.expanduser().resolve()
     media_path = args.media.expanduser().resolve()
     template_dir = args.template
-    template_lesson_path = template_dir / "data" / "lesson.json"
+    template_lesson_path = template_dir / "public" / "data" / "lesson.json"
     lesson_path = args.lesson_out or template_lesson_path
     media_dir = template_dir / "public" / "media"
 
