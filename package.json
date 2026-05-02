@@ -1,0 +1,16 @@
+{
+  "name": "lingua-mate-skill",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.27.0",
+  "scripts": {
+    "dev": "pnpm --dir assets/vite-template dev",
+    "build": "pnpm --dir assets/vite-template build",
+    "split": "python3 scripts/split_transcription.py",
+    "translate": "python3 scripts/translate_chunks_with_codex.py",
+    "apply:s10e01": "python3 scripts/apply_chunks_to_template.py --media ./S10E01.mp4",
+    "transcript:s10e01": "python3 scripts/generate_transcript.py --chunks transcription_chunks.json --prefix S10E01_transcript",
+    "test": "python3 -m unittest discover -s tests",
+    "template:install": "pnpm --dir assets/vite-template install"
+  }
+}

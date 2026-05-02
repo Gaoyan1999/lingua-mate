@@ -1,0 +1,29 @@
+{
+  "language": "English",
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 2.0,
+      "text": " Hello everyone."
+    },
+    {
+      "id": 1,
+      "start": 2.35,
+      "end": 4.8,
+      "text": " Today we are going to talk about learning."
+    },
+    {
+      "id": 2,
+      "start": 6.2,
+      "end": 8.1,
+      "text": " First listen to the complete sentence."
+    },
+    {
+      "id": 3,
+      "start": 8.25,
+      "end": 11.5,
+      "text": " Then repeat with the same intonation."
+    }
+  ]
+}

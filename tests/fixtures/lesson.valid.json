@@ -1,0 +1,30 @@
+{
+  "media": {
+    "type": "video",
+    "path": "/media/sample.mp4",
+    "duration": 12.0,
+    "title": "Sample Lesson"
+  },
+  "languages": {
+    "source": "English",
+    "target": "Chinese"
+  },
+  "chunks": [
+    {
+      "id": "chunk-0001",
+      "start": 0.0,
+      "end": 4.8,
+      "sourceText": "Hello everyone. Today we are going to talk about learning.",
+      "translation": "大家好。今天我们要聊一聊学习。",
+      "readThrough": "这一句先问候听众，然后介绍今天的话题是 learning。",
+      "vocabulary": [
+        {
+          "term": "going to",
+          "meaning": "将要，打算",
+          "nuance": "常用于口语中表达计划或即将发生的事情。",
+          "example": "We are going to talk about learning."
+        }
+      ]
+    }
+  ]
+}
