@@ -31,3 +31,17 @@ export interface Lesson {
   chunks: LessonChunk[];
 }
 
+export interface LessonIndexEntry {
+  id: string;
+  title: string;
+  lessonPath: string;
+  mediaType?: MediaType;
+  duration?: number;
+  source?: string;
+  target?: string;
+  description?: string;
+}
+
+export interface LessonIndex {
+  lessons: LessonIndexEntry[];
+}
