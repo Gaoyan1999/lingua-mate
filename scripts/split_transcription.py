@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
         )
     )
     parser.add_argument("media", type=Path, help="Path to video or audio file.")
-    parser.add_argument("--out", type=Path, default=Path("transcription_chunks.json"), help="Output JSON path.")
+    parser.add_argument("--out", type=Path, help="Output JSON path. Default: materials/<media-stem>/chunks.json.")
     parser.add_argument("--work-dir", type=Path, default=Path(".lingua-mate-work"), help="Intermediate files directory.")
     parser.add_argument("--source-language", default="en", help="Whisper language code. Default: en.")
     parser.add_argument("--whisper-model", default="base", help="Local Whisper model. Default: base.")
@@ -56,6 +56,9 @@ def main() -> int:
     media_path = args.media.expanduser().resolve()
     if not media_path.exists():
         raise SystemExit(f"Media file not found: {media_path}")
+
+    output_path = args.out or Path("materials") / media_path.stem / "chunks.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     work_dir = args.work_dir
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -82,8 +85,8 @@ def main() -> int:
     )
 
     queue = to_translation_queue(chunks)
-    args.out.write_text(json.dumps(queue, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"Wrote {len(queue)} chunks to {args.out.resolve()}")
+    output_path.write_text(json.dumps(queue, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Wrote {len(queue)} chunks to {output_path.resolve()}")
 
     if not args.keep_work and not args.transcript_json:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -95,4 +98,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
