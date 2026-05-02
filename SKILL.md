@@ -54,7 +54,13 @@ Do not require cloud transcription or runtime AI calls from the generated webpag
    python3 scripts/validate_lesson.py materials/my-lesson/lesson.json
    ```
 
-6. Keep generated lesson files under `materials/<slug>/`. Symlink or copy the active material lesson into `assets/vite-template/public/data/lesson.json`, and copy or symlink the media into `assets/vite-template/public/media/`. Keep the lesson media path relative to the Vite public root, such as `/media/source.mp4`.
+6. Keep generated lesson files under `materials/<slug>/`. Register each lesson with the Vite template so the homepage can list multiple lessons:
+
+   ```bash
+   python3 scripts/apply_chunks_to_template.py --chunks materials/my-lesson/chunks.json --media /path/to/media.mp4 --lesson-out materials/my-lesson/lesson.json --lesson-id my-lesson --link-template
+   ```
+
+   This updates `assets/vite-template/public/data/lessons.json`, links the lesson under `assets/vite-template/public/data/lessons/<lesson-id>.json`, and keeps `assets/vite-template/public/data/lesson.json` as the latest lesson fallback. Copy or symlink media into `assets/vite-template/public/media/`. Keep media paths relative to the Vite public root, such as `/media/source.mp4`.
 7. Run the generated page:
 
    ```bash
@@ -78,6 +84,24 @@ Each vocabulary item should explain one English word or phrase for a Chinese-spe
 - `meaning`
 - `nuance`
 - `example`
+
+The optional `lessons.json` homepage index should be:
+
+```json
+{
+  "lessons": [
+    {
+      "id": "my-lesson",
+      "title": "My Lesson",
+      "lessonPath": "/data/lessons/my-lesson.json",
+      "mediaType": "video",
+      "duration": 123,
+      "source": "English",
+      "target": "Chinese"
+    }
+  ]
+}
+```
 
 ## Content Guidance
 

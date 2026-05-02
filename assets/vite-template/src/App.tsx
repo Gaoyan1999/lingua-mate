@@ -1,9 +1,26 @@
 import { ChangeEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { EyeOff, Gauge, ListRestart, LocateFixed, PanelRightClose, PanelRightOpen, Play, Search, Settings, X } from "lucide-react";
-import type { Lesson, LessonChunk, VocabularyItem } from "./types";
+import {
+  ArrowLeft,
+  Clock,
+  EyeOff,
+  Film,
+  Gauge,
+  Headphones,
+  ListRestart,
+  LocateFixed,
+  PanelRightClose,
+  PanelRightOpen,
+  Play,
+  Search,
+  Settings,
+  X,
+} from "lucide-react";
+import type { Lesson, LessonChunk, LessonIndex, LessonIndexEntry, MediaType, VocabularyItem } from "./types";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
-const LESSON_URL = "/data/lesson.json";
+const INDEX_URL = "/data/lessons.json";
+const LEGACY_LESSON_URL = "/data/lesson.json";
+const DEFAULT_LESSON_ID = "template";
 const DEFAULT_SUBTITLE_MASK = { x: 8, y: 78, width: 84, height: 12 };
 const MIN_MASK_HEIGHT = 5;
 const MIN_MASK_WIDTH = 8;
@@ -82,6 +99,67 @@ function isLesson(value: unknown): value is Lesson {
   );
 }
 
+function isMediaType(value: unknown): value is MediaType {
+  return value === "video" || value === "audio";
+}
+
+function slugify(value: string, fallback: string): string {
+  const slug = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || fallback;
+}
+
+function lessonToIndexEntry(lesson: Lesson, lessonPath: string, fallbackId: string): LessonIndexEntry {
+  return {
+    id: slugify(lesson.media.title, fallbackId),
+    title: lesson.media.title,
+    lessonPath,
+    mediaType: lesson.media.type,
+    duration: lesson.media.duration,
+    source: lesson.languages.source,
+    target: lesson.languages.target,
+  };
+}
+
+function normalizeLessonIndex(value: unknown): LessonIndexEntry[] {
+  const rawLessons = Array.isArray(value)
+    ? value
+    : Array.isArray((value as LessonIndex | null)?.lessons)
+      ? (value as LessonIndex).lessons
+      : [];
+
+  return rawLessons.flatMap((raw, index) => {
+    if (!raw || typeof raw !== "object") return [];
+    const item = raw as Partial<LessonIndexEntry> & { lesson?: unknown; path?: unknown };
+    const lessonPath = item.lessonPath ?? item.lesson ?? item.path;
+    const title = item.title;
+    if (typeof lessonPath !== "string" || typeof title !== "string" || !lessonPath.trim() || !title.trim()) {
+      return [];
+    }
+
+    const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : slugify(title, `lesson-${index + 1}`);
+    return [
+      {
+        id,
+        title: title.trim(),
+        lessonPath: lessonPath.trim(),
+        mediaType: isMediaType(item.mediaType) ? item.mediaType : undefined,
+        duration: typeof item.duration === "number" && item.duration > 0 ? item.duration : undefined,
+        source: typeof item.source === "string" ? item.source : undefined,
+        target: typeof item.target === "string" ? item.target : undefined,
+        description: typeof item.description === "string" ? item.description : undefined,
+      },
+    ];
+  });
+}
+
+function currentLessonParam(): string | null {
+  return new URLSearchParams(window.location.search).get("lesson");
+}
+
 export default function App() {
   const mediaRef = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const mediaFrameRef = useRef<HTMLDivElement | null>(null);
@@ -89,6 +167,12 @@ export default function App() {
   const chunkRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const maskDragRef = useRef<MaskDragState | null>(null);
   const [lesson, setLesson] = useState<Lesson>(DEFAULT_LESSON);
+  const [catalog, setCatalog] = useState<LessonIndexEntry[]>([]);
+  const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready">("loading");
+  const [lessonStatus, setLessonStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [lessonError, setLessonError] = useState("");
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(() => currentLessonParam());
+  const [libraryQuery, setLibraryQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [speed, setSpeed] = useState(1);
@@ -108,6 +192,21 @@ export default function App() {
   const activeChunk = lesson.chunks[activeIndex] ?? lesson.chunks[0];
   const focusChunk = lesson.chunks[focusIndex] ?? activeChunk;
   const focusReadThrough = focusChunk.readThrough || "待生成中文讲解";
+  const selectedLesson = useMemo(() => {
+    if (!selectedLessonId) return null;
+    return (
+      catalog.find((item) => item.id === selectedLessonId) ??
+      (selectedLessonId.startsWith("/") ? { id: selectedLessonId, title: selectedLessonId, lessonPath: selectedLessonId } : null)
+    );
+  }, [catalog, selectedLessonId]);
+
+  const filteredLessons = useMemo(() => {
+    const needle = libraryQuery.trim().toLowerCase();
+    if (!needle) return catalog;
+    return catalog.filter((item) =>
+      `${item.title} ${item.source ?? ""} ${item.target ?? ""} ${item.description ?? ""}`.toLowerCase().includes(needle),
+    );
+  }, [catalog, libraryQuery]);
 
   const filteredChunks = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -121,19 +220,102 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadLesson() {
+    async function loadCatalog() {
       try {
-        const response = await fetch(LESSON_URL, { cache: "no-store" });
-        if (!response.ok) return;
-        const nextLesson: unknown = await response.json();
-        if (!cancelled && isLesson(nextLesson)) {
-          setLesson(nextLesson);
-          setCurrentTime(0);
-          setSelectedIndex(0);
-          setSelectedTerm(nextLesson.chunks[0]?.vocabulary[0] ?? null);
+        const response = await fetch(INDEX_URL, { cache: "no-store" });
+        if (response.ok) {
+          const nextIndex: unknown = await response.json();
+          const nextCatalog = normalizeLessonIndex(nextIndex);
+          if (!cancelled && nextCatalog.length > 0) {
+            setCatalog(nextCatalog);
+            setCatalogStatus("ready");
+            return;
+          }
+        }
+      } catch {
+        // Clean checkouts do not include generated lesson indexes.
+      }
+
+      try {
+        const response = await fetch(LEGACY_LESSON_URL, { cache: "no-store" });
+        if (response.ok) {
+          const nextLesson: unknown = await response.json();
+          if (!cancelled && isLesson(nextLesson)) {
+            setCatalog([lessonToIndexEntry(nextLesson, LEGACY_LESSON_URL, DEFAULT_LESSON_ID)]);
+            setCatalogStatus("ready");
+            return;
+          }
         }
       } catch {
         // Clean checkouts do not include generated lesson material.
+      }
+
+      if (!cancelled) {
+        setCatalog([{ ...lessonToIndexEntry(DEFAULT_LESSON, "", DEFAULT_LESSON_ID), id: DEFAULT_LESSON_ID }]);
+        setCatalogStatus("ready");
+      }
+    }
+
+    void loadCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function onPopState() {
+      setSelectedLessonId(currentLessonParam());
+    }
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedLessonId) {
+      setLessonStatus("idle");
+      setLessonError("");
+      mediaRef.current?.pause();
+      return;
+    }
+    if (catalogStatus !== "ready") return;
+
+    let cancelled = false;
+
+    async function loadLesson() {
+      setLessonStatus("loading");
+      setLessonError("");
+      setQuery("");
+      setCurrentTime(0);
+      setSelectedIndex(0);
+
+      if (!selectedLesson || !selectedLesson.lessonPath) {
+        if (selectedLessonId === DEFAULT_LESSON_ID) {
+          setLesson(DEFAULT_LESSON);
+          setSelectedTerm(DEFAULT_LESSON.chunks[0]?.vocabulary[0] ?? null);
+          setLessonStatus("ready");
+          return;
+        }
+        setLessonError("Lesson not found.");
+        setLessonStatus("error");
+        return;
+      }
+
+      try {
+        const response = await fetch(selectedLesson.lessonPath, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Lesson request failed: ${response.status}`);
+        const nextLesson: unknown = await response.json();
+        if (!isLesson(nextLesson)) throw new Error("Invalid lesson JSON.");
+        if (!cancelled) {
+          setLesson(nextLesson);
+          setSelectedTerm(nextLesson.chunks[0]?.vocabulary[0] ?? null);
+          setLessonStatus("ready");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLessonError(error instanceof Error ? error.message : "Could not load lesson.");
+          setLessonStatus("error");
+        }
       }
     }
 
@@ -141,7 +323,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [catalogStatus, selectedLesson, selectedLessonId]);
 
   useEffect(() => {
     if (query.trim()) return;
@@ -257,6 +439,21 @@ export default function App() {
     }
 
     scrollChunkIntoTranscript(activeIndex);
+  }
+
+  function openLesson(entry: LessonIndexEntry) {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set("lesson", entry.id);
+    window.history.pushState({}, "", nextUrl);
+    setSelectedLessonId(entry.id);
+  }
+
+  function returnToLibrary() {
+    mediaRef.current?.pause();
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("lesson");
+    window.history.pushState({}, "", nextUrl);
+    setSelectedLessonId(null);
   }
 
   function changeSpeed(event: ChangeEvent<HTMLSelectElement>) {
@@ -384,6 +581,58 @@ export default function App() {
     }
   }
 
+  if (!selectedLessonId) {
+    return (
+      <main className="app-shell library-shell">
+        <section className="library-stage" aria-label="Lessons">
+          <div className="library-header">
+            <div>
+              <p className="eyebrow">Lingua Mate</p>
+              <h1>Lessons</h1>
+            </div>
+            <label className="search-box">
+              <Search size={18} />
+              <input
+                value={libraryQuery}
+                onChange={(event) => setLibraryQuery(event.target.value)}
+                placeholder="Search lessons"
+              />
+            </label>
+          </div>
+
+          <div className="lesson-grid" aria-live="polite">
+            {catalogStatus === "loading" ? <p className="empty-note">Loading lessons...</p> : null}
+            {catalogStatus === "ready" && filteredLessons.length === 0 ? (
+              <p className="empty-note">No lessons match the search.</p>
+            ) : null}
+            {filteredLessons.map((item) => (
+              <button type="button" className="lesson-card" key={item.id} onClick={() => openLesson(item)}>
+                <span className="lesson-media-icon" aria-hidden="true">
+                  {item.mediaType === "audio" ? <Headphones size={22} /> : <Film size={22} />}
+                </span>
+                <span className="lesson-card-body">
+                  <span className="lesson-title">{item.title}</span>
+                  <span className="lesson-meta">
+                    {item.source && item.target ? `${item.source} to ${item.target}` : "Language lesson"}
+                    {typeof item.duration === "number" ? (
+                      <>
+                        <span aria-hidden="true">/</span>
+                        <Clock size={15} />
+                        {formatTime(item.duration)}
+                      </>
+                    ) : null}
+                  </span>
+                  {item.description ? <span className="lesson-description">{item.description}</span> : null}
+                </span>
+                <Play size={18} className="lesson-open-icon" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <section className={`lesson-stage${isStudyOpen ? "" : " study-collapsed"}`} aria-label="Lesson player">
@@ -394,6 +643,10 @@ export default function App() {
               <h1>{lesson.media.title}</h1>
             </div>
             <div className="title-actions">
+              <button type="button" className="panel-toggle" onClick={returnToLibrary}>
+                <ArrowLeft size={18} />
+                <span>Lessons</span>
+              </button>
               <button
                 type="button"
                 className={`icon-button${isSubtitleMaskEnabled ? " active" : ""}`}
@@ -438,10 +691,14 @@ export default function App() {
           </div>
 
           <div className="media-frame" ref={mediaFrameRef}>
-            {lesson.media.type === "audio" ? (
-              <audio ref={mediaRef} controls src={lesson.media.path} onTimeUpdate={onTimeUpdate} />
+            {lessonStatus === "loading" ? (
+              <p className="media-message">Loading lesson...</p>
+            ) : lessonStatus === "error" ? (
+              <p className="media-message">{lessonError}</p>
+            ) : lesson.media.type === "audio" ? (
+              <audio key={lesson.media.path} ref={mediaRef} controls src={lesson.media.path} onTimeUpdate={onTimeUpdate} />
             ) : (
-              <video ref={mediaRef} controls src={lesson.media.path} onTimeUpdate={onTimeUpdate} playsInline />
+              <video key={lesson.media.path} ref={mediaRef} controls src={lesson.media.path} onTimeUpdate={onTimeUpdate} playsInline />
             )}
             {lesson.media.type === "video" && isSubtitleMaskEnabled ? (
               <div

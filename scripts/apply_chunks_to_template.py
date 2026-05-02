@@ -12,6 +12,14 @@ from typing import Any
 from prepare_media import media_type, probe_duration
 
 
+def slugify(value: str, fallback: str) -> str:
+    slug = "".join(character.lower() if character.isalnum() else "-" for character in value.strip())
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    slug = slug.strip("-")
+    return slug or fallback
+
+
 def load_chunks(path: Path) -> list[dict[str, Any]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
@@ -25,13 +33,13 @@ def load_chunks(path: Path) -> list[dict[str, Any]]:
     return data
 
 
-def build_lesson(chunks: list[dict[str, Any]], media_path: Path, public_media_path: str) -> dict[str, Any]:
+def build_lesson(chunks: list[dict[str, Any]], media_path: Path, public_media_path: str, title: str) -> dict[str, Any]:
     return {
         "media": {
             "type": media_type(media_path),
             "path": public_media_path,
             "duration": probe_duration(media_path),
-            "title": media_path.stem,
+            "title": title,
         },
         "languages": {
             "source": "English",
@@ -66,6 +74,8 @@ def link_media(media_path: Path, media_dir: Path) -> str:
 
 def link_lesson(lesson_path: Path, template_lesson_path: Path) -> None:
     template_lesson_path.parent.mkdir(parents=True, exist_ok=True)
+    if template_lesson_path.resolve() == lesson_path.resolve():
+        return
     if template_lesson_path.exists() or template_lesson_path.is_symlink():
         if template_lesson_path.is_symlink() and template_lesson_path.resolve() == lesson_path.resolve():
             return
@@ -76,13 +86,28 @@ def link_lesson(lesson_path: Path, template_lesson_path: Path) -> None:
     template_lesson_path.symlink_to(relative_target)
 
 
+def update_lesson_index(index_path: Path, entry: dict[str, Any]) -> None:
+    lessons: list[dict[str, Any]] = []
+    if index_path.exists():
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+        raw_lessons = data if isinstance(data, list) else data.get("lessons", []) if isinstance(data, dict) else []
+        if isinstance(raw_lessons, list):
+            lessons = [item for item in raw_lessons if isinstance(item, dict) and item.get("id") != entry["id"]]
+
+    lessons.append(entry)
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    index_path.write_text(json.dumps({"lessons": lessons}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Apply transcription_chunks.json to the Vite lesson template.")
     parser.add_argument("--chunks", type=Path, default=Path("transcription_chunks.json"))
     parser.add_argument("--media", type=Path, required=True)
     parser.add_argument("--template", type=Path, default=Path("assets/vite-template"))
     parser.add_argument("--lesson-out", type=Path, help="Canonical lesson JSON output path.")
-    parser.add_argument("--link-template", action="store_true", help="Symlink template public/data/lesson.json to --lesson-out.")
+    parser.add_argument("--lesson-id", help="Stable id used in the template lesson list. Defaults to the lesson title slug.")
+    parser.add_argument("--lesson-title", help="Display title used in the lesson and template lesson list.")
+    parser.add_argument("--link-template", action="store_true", help="Register the lesson in the Vite template public data.")
     return parser.parse_args()
 
 
@@ -91,8 +116,12 @@ def main() -> int:
     chunks_path = args.chunks.expanduser().resolve()
     media_path = args.media.expanduser().resolve()
     template_dir = args.template
+    lesson_title = args.lesson_title or media_path.stem
+    lesson_id = slugify(args.lesson_id or lesson_title, media_path.stem)
     template_lesson_path = template_dir / "public" / "data" / "lesson.json"
-    lesson_path = args.lesson_out or template_lesson_path
+    template_catalog_lesson_path = template_dir / "public" / "data" / "lessons" / f"{lesson_id}.json"
+    template_index_path = template_dir / "public" / "data" / "lessons.json"
+    lesson_path = args.lesson_out or (template_catalog_lesson_path if args.link_template else template_lesson_path)
     media_dir = template_dir / "public" / "media"
 
     if not chunks_path.exists():
@@ -102,12 +131,27 @@ def main() -> int:
     lesson_path.parent.mkdir(parents=True, exist_ok=True)
 
     public_media_path = link_media(media_path, media_dir)
-    lesson = build_lesson(load_chunks(chunks_path), media_path, public_media_path)
+    lesson = build_lesson(load_chunks(chunks_path), media_path, public_media_path, lesson_title)
     lesson_path.write_text(json.dumps(lesson, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if args.link_template:
         link_lesson(lesson_path, template_lesson_path)
+        link_lesson(lesson_path, template_catalog_lesson_path)
+        update_lesson_index(
+            template_index_path,
+            {
+                "id": lesson_id,
+                "title": lesson["media"]["title"],
+                "lessonPath": f"/data/lessons/{lesson_id}.json",
+                "mediaType": lesson["media"]["type"],
+                "duration": lesson["media"]["duration"],
+                "source": lesson["languages"]["source"],
+                "target": lesson["languages"]["target"],
+            },
+        )
     print(f"Wrote {lesson_path.resolve()}")
     print(f"Media path: {public_media_path}")
+    if args.link_template:
+        print(f"Registered lesson: {lesson_id}")
     print(f"Chunks: {len(lesson['chunks'])}")
     return 0
 

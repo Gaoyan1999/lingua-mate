@@ -14,6 +14,7 @@ import merge_batches
 import split_transcription
 import generate_transcript
 import translate_chunks_with_codex
+import apply_chunks_to_template
 
 
 class PrepareMediaTests(unittest.TestCase):
@@ -145,6 +146,28 @@ class TranslateChunksTests(unittest.TestCase):
 
         self.assertEqual(updated, 1)
         self.assertEqual(chunks[1]["translated"], "你好")
+
+
+class ApplyChunksToTemplateTests(unittest.TestCase):
+    def test_slugify_normalizes_lesson_id(self):
+        self.assertEqual(apply_chunks_to_template.slugify("My Lesson: 01", "fallback"), "my-lesson-01")
+        self.assertEqual(apply_chunks_to_template.slugify("!!!", "fallback"), "fallback")
+
+    def test_update_lesson_index_replaces_existing_entry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index_path = Path(temp_dir) / "lessons.json"
+            index_path.write_text(
+                json.dumps({"lessons": [{"id": "one", "title": "Old", "lessonPath": "/old.json"}]}),
+                encoding="utf-8",
+            )
+
+            apply_chunks_to_template.update_lesson_index(
+                index_path,
+                {"id": "one", "title": "New", "lessonPath": "/data/lessons/one.json"},
+            )
+
+            data = json.loads(index_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["lessons"], [{"id": "one", "title": "New", "lessonPath": "/data/lessons/one.json"}])
 
 
 if __name__ == "__main__":
