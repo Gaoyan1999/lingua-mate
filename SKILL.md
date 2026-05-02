@@ -41,7 +41,7 @@ Do not require cloud transcription or runtime AI calls from the generated webpag
 
    This writes `materials/<media-name>/chunks.json` with `{ "timeStart", "timeEnd", "origin", "translated" }[]`. Leave `translated` empty for Codex/cc to fill with Chinese later.
 
-3. Use Codex/cc to fill each AI batch. Preserve every chunk `id`; add `translation`, `readThrough`, and `vocabulary`.
+3. For translation work, create a focused subagent and assign it a lite model such as `gpt-5.4-mini`, because English-to-Chinese chunk translation is straightforward and benefits from parallel, low-cost batching. Ask the subagent to preserve every chunk `id`; add `translation`, `readThrough`, and `vocabulary`.
 4. Merge filled batches:
 
    ```bash
