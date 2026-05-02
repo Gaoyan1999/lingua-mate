@@ -24,8 +24,27 @@ const DEFAULT_LESSON_ID = "template";
 const DEFAULT_SUBTITLE_MASK = { x: 8, y: 78, width: 84, height: 12 };
 const MIN_MASK_HEIGHT = 5;
 const MIN_MASK_WIDTH = 8;
+const PLAYER_CONFIG_STORAGE_KEY = "lingua-mate:player-config:v1";
+const PLAY_PROGRESS_STORAGE_KEY = "lingua-mate:play-progress:v1";
+const PROGRESS_SAVE_SECONDS = 2;
+const PROGRESS_SAVE_MS = 5000;
+const MAX_STORED_PROGRESS_ITEMS = 100;
 
 type SubtitleMask = typeof DEFAULT_SUBTITLE_MASK;
+type PlayerConfig = {
+  speed: number;
+  seekStep: number;
+  isSubtitleMaskEnabled: boolean;
+  subtitleMask: SubtitleMask;
+  maskShortcut: string;
+  isStudyOpen: boolean;
+};
+type PlaybackProgress = {
+  time: number;
+  duration?: number;
+  updatedAt: number;
+};
+type PlaybackProgressMap = Record<string, PlaybackProgress>;
 type MaskDragMode = "move" | "nw" | "ne" | "sw" | "se";
 type MaskDragState = {
   mode: MaskDragMode;
@@ -41,7 +60,7 @@ const DEFAULT_LESSON: Lesson = {
     type: "audio",
     path: "",
     duration: 8,
-    title: "Lingua Mate lesson",
+    title: "Lingua Mate media",
   },
   languages: {
     source: "English",
@@ -52,15 +71,15 @@ const DEFAULT_LESSON: Lesson = {
       id: "chunk-0001",
       start: 0,
       end: 8,
-      sourceText: "Generate or link a lesson JSON file to start studying.",
-      translation: "生成或链接 lesson JSON 文件后即可开始学习。",
-      readThrough: "This placeholder keeps the reusable template buildable before local generated lesson material is linked.",
+      sourceText: "Generate or link a media JSON file to start studying.",
+      translation: "生成或链接媒体 JSON 文件后即可开始学习。",
+      readThrough: "This placeholder keeps the reusable template buildable before local generated study material is linked.",
       vocabulary: [
         {
           term: "link",
-          meaning: "连接；在这里指把生成的 lesson.json 放到模板可读取的位置",
+          meaning: "连接；在这里指把生成的 JSON 文件放到模板可读取的位置",
           nuance: "In developer tooling, link often means symlink or connect one file path to another.",
-          example: "Link the generated lesson file before running the learner page.",
+          example: "Link the generated media file before running the learner page.",
         },
       ],
     },
@@ -84,6 +103,122 @@ function findActiveChunk(chunks: LessonChunk[], time: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
+  speed: 1,
+  seekStep: 5,
+  isSubtitleMaskEnabled: false,
+  subtitleMask: DEFAULT_SUBTITLE_MASK,
+  maskShortcut: "M",
+  isStudyOpen: false,
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readStorageValue(key: string): unknown {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStorageValue(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage may be disabled or full. The app should still work without persistence.
+  }
+}
+
+function normalizeShortcut(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  return value.trim().slice(-1).toUpperCase();
+}
+
+function normalizeSubtitleMask(value: unknown): SubtitleMask {
+  if (!isRecord(value)) return DEFAULT_SUBTITLE_MASK;
+
+  const rawWidth = typeof value.width === "number" ? value.width : DEFAULT_SUBTITLE_MASK.width;
+  const rawHeight = typeof value.height === "number" ? value.height : DEFAULT_SUBTITLE_MASK.height;
+  const width = clamp(rawWidth, MIN_MASK_WIDTH, 100);
+  const height = clamp(rawHeight, MIN_MASK_HEIGHT, 100);
+  return {
+    x: clamp(typeof value.x === "number" ? value.x : DEFAULT_SUBTITLE_MASK.x, 0, 100 - width),
+    y: clamp(typeof value.y === "number" ? value.y : DEFAULT_SUBTITLE_MASK.y, 0, 100 - height),
+    width,
+    height,
+  };
+}
+
+function readPlayerConfig(): PlayerConfig {
+  const stored = readStorageValue(PLAYER_CONFIG_STORAGE_KEY);
+  if (!isRecord(stored)) return DEFAULT_PLAYER_CONFIG;
+
+  return {
+    speed: typeof stored.speed === "number" && SPEEDS.includes(stored.speed) ? stored.speed : DEFAULT_PLAYER_CONFIG.speed,
+    seekStep:
+      typeof stored.seekStep === "number" && Number.isFinite(stored.seekStep)
+        ? clamp(Math.round(stored.seekStep), 1, 60)
+        : DEFAULT_PLAYER_CONFIG.seekStep,
+    isSubtitleMaskEnabled:
+      typeof stored.isSubtitleMaskEnabled === "boolean"
+        ? stored.isSubtitleMaskEnabled
+        : DEFAULT_PLAYER_CONFIG.isSubtitleMaskEnabled,
+    subtitleMask: normalizeSubtitleMask(stored.subtitleMask),
+    maskShortcut: normalizeShortcut(stored.maskShortcut, DEFAULT_PLAYER_CONFIG.maskShortcut),
+    isStudyOpen: typeof stored.isStudyOpen === "boolean" ? stored.isStudyOpen : DEFAULT_PLAYER_CONFIG.isStudyOpen,
+  };
+}
+
+function readPlaybackProgress(): PlaybackProgressMap {
+  const stored = readStorageValue(PLAY_PROGRESS_STORAGE_KEY);
+  if (!isRecord(stored)) return {};
+
+  return Object.fromEntries(
+    Object.entries(stored).flatMap(([id, value]) => {
+      if (!id || !isRecord(value) || typeof value.time !== "number" || typeof value.updatedAt !== "number") return [];
+      return [
+        [
+          id,
+          {
+            time: Math.max(0, value.time),
+            duration: typeof value.duration === "number" && value.duration > 0 ? value.duration : undefined,
+            updatedAt: value.updatedAt,
+          },
+        ],
+      ];
+    }),
+  );
+}
+
+function writePlaybackProgress(lessonId: string, progress: PlaybackProgress): PlaybackProgressMap {
+  const nextProgress = {
+    ...readPlaybackProgress(),
+    [lessonId]: progress,
+  };
+  const prunedProgress = Object.fromEntries(
+    Object.entries(nextProgress)
+      .sort(([, a], [, b]) => b.updatedAt - a.updatedAt)
+      .slice(0, MAX_STORED_PROGRESS_ITEMS),
+  );
+  writeStorageValue(PLAY_PROGRESS_STORAGE_KEY, prunedProgress);
+  return prunedProgress;
+}
+
+function readResumeTime(lessonId: string, duration: number): number {
+  const progress = readPlaybackProgress()[lessonId];
+  if (!progress || !Number.isFinite(progress.time)) return 0;
+  if (duration > 0 && progress.time >= duration - 1) return 0;
+  return clamp(progress.time, 0, Math.max(0, duration));
 }
 
 function isLesson(value: unknown): value is Lesson {
@@ -166,6 +301,8 @@ export default function App() {
   const lyricsListRef = useRef<HTMLDivElement | null>(null);
   const chunkRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const maskDragRef = useRef<MaskDragState | null>(null);
+  const lastProgressSaveRef = useRef({ lessonId: "", time: 0, savedAt: 0 });
+  const [initialPlayerConfig] = useState<PlayerConfig>(() => readPlayerConfig());
   const [lesson, setLesson] = useState<Lesson>(DEFAULT_LESSON);
   const [catalog, setCatalog] = useState<LessonIndexEntry[]>([]);
   const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready">("loading");
@@ -175,13 +312,14 @@ export default function App() {
   const [libraryQuery, setLibraryQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [speed, setSpeed] = useState(1);
-  const [seekStep, setSeekStep] = useState(5);
-  const [isSubtitleMaskEnabled, setIsSubtitleMaskEnabled] = useState(false);
-  const [subtitleMask, setSubtitleMask] = useState<SubtitleMask>(DEFAULT_SUBTITLE_MASK);
-  const [maskShortcut, setMaskShortcut] = useState("M");
+  const [speed, setSpeed] = useState(initialPlayerConfig.speed);
+  const [seekStep, setSeekStep] = useState(initialPlayerConfig.seekStep);
+  const [isSubtitleMaskEnabled, setIsSubtitleMaskEnabled] = useState(initialPlayerConfig.isSubtitleMaskEnabled);
+  const [subtitleMask, setSubtitleMask] = useState<SubtitleMask>(initialPlayerConfig.subtitleMask);
+  const [maskShortcut, setMaskShortcut] = useState(initialPlayerConfig.maskShortcut);
   const [query, setQuery] = useState("");
-  const [isStudyOpen, setIsStudyOpen] = useState(false);
+  const [isStudyOpen, setIsStudyOpen] = useState(initialPlayerConfig.isStudyOpen);
+  const [playProgress, setPlayProgress] = useState<PlaybackProgressMap>(() => readPlaybackProgress());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedTerm, setSelectedTerm] = useState<VocabularyItem | null>(
     DEFAULT_LESSON.chunks[0]?.vocabulary[0] ?? null,
@@ -263,6 +401,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    writeStorageValue(PLAYER_CONFIG_STORAGE_KEY, {
+      speed,
+      seekStep,
+      isSubtitleMaskEnabled,
+      subtitleMask,
+      maskShortcut,
+      isStudyOpen,
+    });
+  }, [speed, seekStep, isSubtitleMaskEnabled, subtitleMask, maskShortcut, isStudyOpen]);
+
+  useEffect(() => {
     function onPopState() {
       setSelectedLessonId(currentLessonParam());
     }
@@ -280,40 +429,47 @@ export default function App() {
     }
     if (catalogStatus !== "ready") return;
 
+    const activeLessonId = selectedLessonId;
     let cancelled = false;
 
     async function loadLesson() {
       setLessonStatus("loading");
       setLessonError("");
       setQuery("");
-      setCurrentTime(0);
-      setSelectedIndex(0);
 
       if (!selectedLesson || !selectedLesson.lessonPath) {
-        if (selectedLessonId === DEFAULT_LESSON_ID) {
+        if (activeLessonId === DEFAULT_LESSON_ID) {
+          const nextTime = readResumeTime(activeLessonId, DEFAULT_LESSON.media.duration);
+          const nextIndex = findActiveChunk(DEFAULT_LESSON.chunks, nextTime);
           setLesson(DEFAULT_LESSON);
-          setSelectedTerm(DEFAULT_LESSON.chunks[0]?.vocabulary[0] ?? null);
+          setCurrentTime(nextTime);
+          setSelectedIndex(nextIndex);
+          setSelectedTerm(DEFAULT_LESSON.chunks[nextIndex]?.vocabulary[0] ?? null);
           setLessonStatus("ready");
           return;
         }
-        setLessonError("Lesson not found.");
+        setLessonError("Media not found.");
         setLessonStatus("error");
         return;
       }
 
       try {
         const response = await fetch(selectedLesson.lessonPath, { cache: "no-store" });
-        if (!response.ok) throw new Error(`Lesson request failed: ${response.status}`);
+        if (!response.ok) throw new Error(`Media request failed: ${response.status}`);
         const nextLesson: unknown = await response.json();
-        if (!isLesson(nextLesson)) throw new Error("Invalid lesson JSON.");
+        if (!isLesson(nextLesson)) throw new Error("Invalid media JSON.");
         if (!cancelled) {
+          const nextTime = readResumeTime(activeLessonId, nextLesson.media.duration);
+          const nextIndex = findActiveChunk(nextLesson.chunks, nextTime);
           setLesson(nextLesson);
-          setSelectedTerm(nextLesson.chunks[0]?.vocabulary[0] ?? null);
+          setCurrentTime(nextTime);
+          setSelectedIndex(nextIndex);
+          setSelectedTerm(nextLesson.chunks[nextIndex]?.vocabulary[0] ?? null);
           setLessonStatus("ready");
         }
       } catch (error) {
         if (!cancelled) {
-          setLessonError(error instanceof Error ? error.message : "Could not load lesson.");
+          setLessonError(error instanceof Error ? error.message : "Could not load media.");
           setLessonStatus("error");
         }
       }
@@ -329,6 +485,22 @@ export default function App() {
     if (query.trim()) return;
     scrollChunkIntoTranscript(activeIndex, "smooth");
   }, [activeIndex, query]);
+
+  useEffect(() => {
+    const media = mediaRef.current;
+    if (!media || lessonStatus !== "ready") return;
+    media.playbackRate = speed;
+  }, [lesson.media.path, lessonStatus, speed]);
+
+  useEffect(() => {
+    const media = mediaRef.current;
+    if (!media || lessonStatus !== "ready") return;
+    const nextTime = clamp(currentTime, 0, media.duration || lesson.media.duration);
+    if (Number.isFinite(nextTime) && Math.abs(media.currentTime - nextTime) > 0.5) {
+      media.currentTime = nextTime;
+    }
+  }, [lesson.media.duration, lesson.media.path, lessonStatus]);
+
 
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
@@ -543,10 +715,51 @@ export default function App() {
     maskDragRef.current = null;
   }
 
+  function saveCurrentPlaybackProgress(force = false) {
+    const media = mediaRef.current;
+    if (!media || !selectedLessonId) return;
+
+    const duration =
+      Number.isFinite(media.duration) && media.duration > 0
+        ? media.duration
+        : lesson.media.duration > 0
+          ? lesson.media.duration
+          : undefined;
+    const current = duration ? clamp(media.currentTime, 0, duration) : Math.max(0, media.currentTime);
+    const now = Date.now();
+    const last = lastProgressSaveRef.current;
+    if (
+      !force &&
+      last.lessonId === selectedLessonId &&
+      Math.abs(current - last.time) < PROGRESS_SAVE_SECONDS &&
+      now - last.savedAt < PROGRESS_SAVE_MS
+    ) {
+      return;
+    }
+
+    lastProgressSaveRef.current = { lessonId: selectedLessonId, time: current, savedAt: now };
+    setPlayProgress(
+      writePlaybackProgress(selectedLessonId, {
+        time: current,
+        duration,
+        updatedAt: now,
+      }),
+    );
+  }
+
+  function getDisplayProgress(entry: LessonIndexEntry): PlaybackProgress | null {
+    const progress = playProgress[entry.id];
+    if (!progress || progress.time < 1) return null;
+    const duration = entry.duration ?? progress.duration;
+    if (duration && progress.time >= duration - 1) return null;
+    return progress;
+  }
+
   function onTimeUpdate() {
     const media = mediaRef.current;
     if (!media) return;
     setCurrentTime(media.currentTime);
+    saveCurrentPlaybackProgress();
     const nextActive = findActiveChunk(lesson.chunks, media.currentTime);
     if (nextActive !== selectedIndex) {
       setSelectedIndex(nextActive);
@@ -584,49 +797,59 @@ export default function App() {
   if (!selectedLessonId) {
     return (
       <main className="app-shell library-shell">
-        <section className="library-stage" aria-label="Lessons">
+        <section className="library-stage" aria-label="Library">
           <div className="library-header">
             <div>
               <p className="eyebrow">Lingua Mate</p>
-              <h1>Lessons</h1>
+              <h1>Library</h1>
             </div>
             <label className="search-box">
               <Search size={18} />
               <input
                 value={libraryQuery}
                 onChange={(event) => setLibraryQuery(event.target.value)}
-                placeholder="Search lessons"
+                placeholder="Search media"
               />
             </label>
           </div>
 
           <div className="lesson-grid" aria-live="polite">
-            {catalogStatus === "loading" ? <p className="empty-note">Loading lessons...</p> : null}
+            {catalogStatus === "loading" ? <p className="empty-note">Loading media...</p> : null}
             {catalogStatus === "ready" && filteredLessons.length === 0 ? (
-              <p className="empty-note">No lessons match the search.</p>
+              <p className="empty-note">No media match the search.</p>
             ) : null}
-            {filteredLessons.map((item) => (
-              <button type="button" className="lesson-card" key={item.id} onClick={() => openLesson(item)}>
-                <span className="lesson-media-icon" aria-hidden="true">
-                  {item.mediaType === "audio" ? <Headphones size={22} /> : <Film size={22} />}
-                </span>
-                <span className="lesson-card-body">
-                  <span className="lesson-title">{item.title}</span>
-                  <span className="lesson-meta">
-                    {item.source && item.target ? `${item.source} to ${item.target}` : "Language lesson"}
-                    {typeof item.duration === "number" ? (
-                      <>
-                        <span aria-hidden="true">/</span>
-                        <Clock size={15} />
-                        {formatTime(item.duration)}
-                      </>
-                    ) : null}
+            {filteredLessons.map((item) => {
+              const progress = getDisplayProgress(item);
+              return (
+                <button type="button" className="lesson-card" key={item.id} onClick={() => openLesson(item)}>
+                  <span className="lesson-media-icon" aria-hidden="true">
+                    {item.mediaType === "audio" ? <Headphones size={22} /> : <Film size={22} />}
                   </span>
-                  {item.description ? <span className="lesson-description">{item.description}</span> : null}
-                </span>
-                <Play size={18} className="lesson-open-icon" aria-hidden="true" />
-              </button>
-            ))}
+                  <span className="lesson-card-body">
+                    <span className="lesson-title">{item.title}</span>
+                    <span className="lesson-meta">
+                      {item.source && item.target ? `${item.source} to ${item.target}` : "Study media"}
+                      {typeof item.duration === "number" ? (
+                        <>
+                          <span aria-hidden="true">/</span>
+                          <Clock size={15} />
+                          {formatTime(item.duration)}
+                        </>
+                      ) : null}
+                      {progress ? (
+                        <>
+                          <span aria-hidden="true">/</span>
+                          <Play size={15} />
+                          Resume {formatTime(progress.time)}
+                        </>
+                      ) : null}
+                    </span>
+                    {item.description ? <span className="lesson-description">{item.description}</span> : null}
+                  </span>
+                  <Play size={18} className="lesson-open-icon" aria-hidden="true" />
+                </button>
+              );
+            })}
           </div>
         </section>
       </main>
@@ -635,7 +858,7 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <section className={`lesson-stage${isStudyOpen ? "" : " study-collapsed"}`} aria-label="Lesson player">
+      <section className={`lesson-stage${isStudyOpen ? "" : " study-collapsed"}`} aria-label="Media player">
         <div className="media-column">
           <div className="title-row">
             <div>
@@ -645,7 +868,7 @@ export default function App() {
             <div className="title-actions">
               <button type="button" className="panel-toggle" onClick={returnToLibrary}>
                 <ArrowLeft size={18} />
-                <span>Lessons</span>
+                <span>Library</span>
               </button>
               <button
                 type="button"
@@ -692,13 +915,30 @@ export default function App() {
 
           <div className="media-frame" ref={mediaFrameRef}>
             {lessonStatus === "loading" ? (
-              <p className="media-message">Loading lesson...</p>
+              <p className="media-message">Loading media...</p>
             ) : lessonStatus === "error" ? (
               <p className="media-message">{lessonError}</p>
             ) : lesson.media.type === "audio" ? (
-              <audio key={lesson.media.path} ref={mediaRef} controls src={lesson.media.path} onTimeUpdate={onTimeUpdate} />
+              <audio
+                key={lesson.media.path}
+                ref={mediaRef}
+                controls
+                src={lesson.media.path}
+                onTimeUpdate={onTimeUpdate}
+                onPause={() => saveCurrentPlaybackProgress(true)}
+                onEnded={() => saveCurrentPlaybackProgress(true)}
+              />
             ) : (
-              <video key={lesson.media.path} ref={mediaRef} controls src={lesson.media.path} onTimeUpdate={onTimeUpdate} playsInline />
+              <video
+                key={lesson.media.path}
+                ref={mediaRef}
+                controls
+                src={lesson.media.path}
+                onTimeUpdate={onTimeUpdate}
+                onPause={() => saveCurrentPlaybackProgress(true)}
+                onEnded={() => saveCurrentPlaybackProgress(true)}
+                playsInline
+              />
             )}
             {lesson.media.type === "video" && isSubtitleMaskEnabled ? (
               <div
