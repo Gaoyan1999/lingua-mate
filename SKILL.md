@@ -54,7 +54,7 @@ Do not require cloud transcription or runtime AI calls from the generated webpag
    python3 scripts/validate_lesson.py materials/my-lesson/lesson.json
    ```
 
-6. Keep generated lesson files under `materials/<slug>/`. Symlink or copy the active material lesson into `assets/vite-template/data/lesson.json`, and copy or symlink the media into `assets/vite-template/public/media/`. Keep the lesson media path relative to the Vite public root, such as `/media/source.mp4`.
+6. Keep generated lesson files under `materials/<slug>/`. Symlink or copy the active material lesson into `assets/vite-template/public/data/lesson.json`, and copy or symlink the media into `assets/vite-template/public/media/`. Keep the lesson media path relative to the Vite public root, such as `/media/source.mp4`.
 7. Run the generated page:
 
    ```bash

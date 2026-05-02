@@ -1,10 +1,40 @@
 import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Gauge, ListRestart, PanelRightClose, PanelRightOpen, Play, RotateCcw, Search } from "lucide-react";
-import lessonData from "../data/lesson.json";
 import type { Lesson, LessonChunk, VocabularyItem } from "./types";
 
-const lesson = lessonData as Lesson;
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+const LESSON_URL = "/data/lesson.json";
+
+const DEFAULT_LESSON: Lesson = {
+  media: {
+    type: "audio",
+    path: "",
+    duration: 8,
+    title: "Lingua Mate lesson",
+  },
+  languages: {
+    source: "English",
+    target: "Chinese",
+  },
+  chunks: [
+    {
+      id: "chunk-0001",
+      start: 0,
+      end: 8,
+      sourceText: "Generate or link a lesson JSON file to start studying.",
+      translation: "生成或链接 lesson JSON 文件后即可开始学习。",
+      readThrough: "This placeholder keeps the reusable template buildable before local generated lesson material is linked.",
+      vocabulary: [
+        {
+          term: "link",
+          meaning: "连接；在这里指把生成的 lesson.json 放到模板可读取的位置",
+          nuance: "In developer tooling, link often means symlink or connect one file path to another.",
+          example: "Link the generated lesson file before running the learner page.",
+        },
+      ],
+    },
+  ],
+};
 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -21,15 +51,31 @@ function findActiveChunk(chunks: LessonChunk[], time: number): number {
   return 0;
 }
 
+function isLesson(value: unknown): value is Lesson {
+  if (!value || typeof value !== "object") return false;
+  const lesson = value as Lesson;
+  return (
+    typeof lesson.media?.title === "string" &&
+    typeof lesson.media?.path === "string" &&
+    typeof lesson.languages?.source === "string" &&
+    typeof lesson.languages?.target === "string" &&
+    Array.isArray(lesson.chunks) &&
+    lesson.chunks.length > 0
+  );
+}
+
 export default function App() {
   const mediaRef = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const chunkRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [lesson, setLesson] = useState<Lesson>(DEFAULT_LESSON);
   const [currentTime, setCurrentTime] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [query, setQuery] = useState("");
   const [isStudyOpen, setIsStudyOpen] = useState(false);
-  const [selectedTerm, setSelectedTerm] = useState<VocabularyItem | null>(lesson.chunks[0]?.vocabulary[0] ?? null);
+  const [selectedTerm, setSelectedTerm] = useState<VocabularyItem | null>(
+    DEFAULT_LESSON.chunks[0]?.vocabulary[0] ?? null,
+  );
 
   const activeIndex = findActiveChunk(lesson.chunks, currentTime);
   const focusIndex = selectedIndex >= 0 ? selectedIndex : activeIndex;
@@ -44,13 +90,38 @@ export default function App() {
       const vocab = chunk.vocabulary.map((item) => `${item.term} ${item.meaning}`).join(" ");
       return `${chunk.sourceText} ${chunk.translation} ${chunk.readThrough} ${vocab}`.toLowerCase().includes(needle);
     });
-  }, [query]);
+  }, [lesson.chunks, query]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLesson() {
+      try {
+        const response = await fetch(LESSON_URL, { cache: "no-store" });
+        if (!response.ok) return;
+        const nextLesson: unknown = await response.json();
+        if (!cancelled && isLesson(nextLesson)) {
+          setLesson(nextLesson);
+          setCurrentTime(0);
+          setSelectedIndex(0);
+          setSelectedTerm(nextLesson.chunks[0]?.vocabulary[0] ?? null);
+        }
+      } catch {
+        // Clean checkouts do not include generated lesson material.
+      }
+    }
+
+    void loadLesson();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const activeId = lesson.chunks[activeIndex]?.id;
     if (!activeId || query.trim()) return;
     chunkRefs.current[activeId]?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [activeIndex, query]);
+  }, [activeIndex, lesson.chunks, query]);
 
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
@@ -79,7 +150,8 @@ export default function App() {
     if (!media) return;
     media.currentTime = chunk.start;
     setCurrentTime(chunk.start);
-    setSelectedIndex(lesson.chunks.findIndex((item) => item.id === chunk.id));
+    const nextIndex = lesson.chunks.findIndex((item) => item.id === chunk.id);
+    setSelectedIndex(nextIndex >= 0 ? nextIndex : activeIndex);
     setSelectedTerm(chunk.vocabulary[0] ?? null);
     void media.play();
   }
