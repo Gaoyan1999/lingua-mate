@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare a local media file for a Lingua Mate lesson."""
+"""Prepare a local media file for a Lingua Mate Library item."""
 
 from __future__ import annotations
 
@@ -278,9 +278,9 @@ def build_lesson(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Prepare a local video or podcast for a Lingua Mate Vite lesson.")
+    parser = argparse.ArgumentParser(description="Prepare a local video or podcast for a Lingua Mate Vite Library item.")
     parser.add_argument("media", type=Path, help="Path to the source video or audio file.")
-    parser.add_argument("--out", type=Path, required=True, help="Output directory for lesson artifacts.")
+    parser.add_argument("--out", type=Path, required=True, help="Output directory for Library artifacts.")
     parser.add_argument("--source-language", default="en", help="Source language for Whisper. Default: en.")
     parser.add_argument("--target-language", default="Chinese", help="Target language for translations/explanations.")
     parser.add_argument("--whisper-model", default="base", help="Local Whisper model name.")

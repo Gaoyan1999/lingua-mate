@@ -8,8 +8,8 @@ Lingua Mate is a Codex skill package for turning a local English video or podcas
 - Transcribes English speech with local Whisper.
 - Splits transcript text into pause-based chunks.
 - Translates chunk JSON into Simplified Chinese with Codex CLI batches.
-- Applies translated material to a Vite learner page with a lesson-list homepage.
-- Keeps generated lesson material out of source control.
+- Applies translated material to a Vite learner page with a Library homepage.
+- Keeps generated Library material out of source control.
 
 ## Requirements
 
@@ -59,18 +59,18 @@ Generated content is intentionally ignored by git. The canonical generated mater
 materials/s10e01/
 ```
 
-When applying a generated lesson to the reusable Vite template, link or copy the active lesson JSON to:
+When applying generated Library material to the reusable Vite template, link or copy the active Library JSON to:
 
 ```text
 assets/vite-template/public/data/lessons/<lesson-id>.json
 ```
 
-Register it in the homepage index:
+Register it in the Library index:
 
 ```text
 assets/vite-template/public/data/lessons.json
 ```
 
-The template still supports `assets/vite-template/public/data/lesson.json` as a single-lesson fallback.
+The template still supports `assets/vite-template/public/data/lesson.json` as a single-item Library fallback.
 
 The reusable source code lives in `scripts/`, `assets/vite-template/`, `tests/`, and `SKILL.md`.

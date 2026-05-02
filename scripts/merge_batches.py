@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge filled Lingua Mate AI batch files into a final lesson JSON."""
+"""Merge filled Lingua Mate AI batch files into a final Library JSON."""
 
 from __future__ import annotations
 
@@ -55,10 +55,10 @@ def merge_batches(draft: dict[str, Any], batch_paths: list[Path]) -> dict[str, A
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Merge filled AI batches into a final lesson JSON.")
+    parser = argparse.ArgumentParser(description="Merge filled AI batches into a final Library JSON.")
     parser.add_argument("draft", type=Path, help="Path to lesson.draft.json.")
     parser.add_argument("batches", nargs="+", type=Path, help="Filled batch JSON files.")
-    parser.add_argument("--out", type=Path, required=True, help="Output lesson.json path.")
+    parser.add_argument("--out", type=Path, required=True, help="Output Library JSON path.")
     return parser.parse_args()
 
 
@@ -74,4 +74,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

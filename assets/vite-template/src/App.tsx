@@ -60,7 +60,7 @@ const DEFAULT_LESSON: Lesson = {
     type: "audio",
     path: "",
     duration: 8,
-    title: "Lingua Mate media",
+    title: "Lingua Mate Library",
   },
   languages: {
     source: "English",
@@ -275,7 +275,7 @@ function normalizeLessonIndex(value: unknown): LessonIndexEntry[] {
       return [];
     }
 
-    const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : slugify(title, `lesson-${index + 1}`);
+    const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : slugify(title, `library-${index + 1}`);
     return [
       {
         id,
@@ -291,8 +291,9 @@ function normalizeLessonIndex(value: unknown): LessonIndexEntry[] {
   });
 }
 
-function currentLessonParam(): string | null {
-  return new URLSearchParams(window.location.search).get("lesson");
+function currentLibraryParam(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("library") ?? params.get("lesson");
 }
 
 export default function App() {
@@ -308,7 +309,7 @@ export default function App() {
   const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready">("loading");
   const [lessonStatus, setLessonStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [lessonError, setLessonError] = useState("");
-  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(() => currentLessonParam());
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(() => currentLibraryParam());
   const [libraryQuery, setLibraryQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -371,7 +372,7 @@ export default function App() {
           }
         }
       } catch {
-        // Clean checkouts do not include generated lesson indexes.
+        // Clean checkouts do not include generated Library indexes.
       }
 
       try {
@@ -385,7 +386,7 @@ export default function App() {
           }
         }
       } catch {
-        // Clean checkouts do not include generated lesson material.
+        // Clean checkouts do not include generated Library material.
       }
 
       if (!cancelled) {
@@ -413,7 +414,7 @@ export default function App() {
 
   useEffect(() => {
     function onPopState() {
-      setSelectedLessonId(currentLessonParam());
+      setSelectedLessonId(currentLibraryParam());
     }
 
     window.addEventListener("popstate", onPopState);
@@ -615,7 +616,8 @@ export default function App() {
 
   function openLesson(entry: LessonIndexEntry) {
     const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.set("lesson", entry.id);
+    nextUrl.searchParams.set("library", entry.id);
+    nextUrl.searchParams.delete("lesson");
     window.history.pushState({}, "", nextUrl);
     setSelectedLessonId(entry.id);
   }
@@ -623,6 +625,7 @@ export default function App() {
   function returnToLibrary() {
     mediaRef.current?.pause();
     const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("library");
     nextUrl.searchParams.delete("lesson");
     window.history.pushState({}, "", nextUrl);
     setSelectedLessonId(null);
