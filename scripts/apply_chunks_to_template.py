@@ -64,11 +64,25 @@ def link_media(media_path: Path, media_dir: Path) -> str:
     return f"/media/{media_path.name}"
 
 
+def link_lesson(lesson_path: Path, template_lesson_path: Path) -> None:
+    template_lesson_path.parent.mkdir(parents=True, exist_ok=True)
+    if template_lesson_path.exists() or template_lesson_path.is_symlink():
+        if template_lesson_path.is_symlink() and template_lesson_path.resolve() == lesson_path.resolve():
+            return
+        if template_lesson_path.is_dir():
+            raise SystemExit(f"Template lesson path is a directory: {template_lesson_path}")
+        template_lesson_path.unlink()
+    relative_target = os.path.relpath(lesson_path.resolve(), template_lesson_path.parent.resolve())
+    template_lesson_path.symlink_to(relative_target)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Apply transcription_chunks.json to the Vite lesson template.")
     parser.add_argument("--chunks", type=Path, default=Path("transcription_chunks.json"))
     parser.add_argument("--media", type=Path, required=True)
     parser.add_argument("--template", type=Path, default=Path("assets/vite-template"))
+    parser.add_argument("--lesson-out", type=Path, help="Canonical lesson JSON output path.")
+    parser.add_argument("--link-template", action="store_true", help="Symlink template data/lesson.json to --lesson-out.")
     return parser.parse_args()
 
 
@@ -77,19 +91,21 @@ def main() -> int:
     chunks_path = args.chunks.expanduser().resolve()
     media_path = args.media.expanduser().resolve()
     template_dir = args.template
-    lesson_path = template_dir / "data" / "lesson.json"
+    template_lesson_path = template_dir / "data" / "lesson.json"
+    lesson_path = args.lesson_out or template_lesson_path
     media_dir = template_dir / "public" / "media"
 
     if not chunks_path.exists():
         raise SystemExit(f"Chunks file not found: {chunks_path}")
     if not media_path.exists():
         raise SystemExit(f"Media file not found: {media_path}")
-    if not lesson_path.parent.exists():
-        raise SystemExit(f"Template data directory not found: {lesson_path.parent}")
+    lesson_path.parent.mkdir(parents=True, exist_ok=True)
 
     public_media_path = link_media(media_path, media_dir)
     lesson = build_lesson(load_chunks(chunks_path), media_path, public_media_path)
     lesson_path.write_text(json.dumps(lesson, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if args.link_template:
+        link_lesson(lesson_path, template_lesson_path)
     print(f"Wrote {lesson_path.resolve()}")
     print(f"Media path: {public_media_path}")
     print(f"Chunks: {len(lesson['chunks'])}")
@@ -98,4 +114,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

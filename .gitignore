@@ -14,5 +14,11 @@ dist/
 *.mkv
 outputs/
 lesson-output/
+materials/
 .lingua-mate-work/
-
+transcription_chunks.json
+*_transcript.txt
+*_transcript.srt
+*_transcript.vtt
+assets/vite-template/data/lesson.json
+assets/vite-template/public/media/
