@@ -40,6 +40,11 @@ const DEFAULT_MEDIA_ASPECT_RATIO = 16 / 9;
 const DEFAULT_SUBTITLE_MASK = { x: 8, y: 78, width: 84, height: 12 };
 const MIN_MASK_HEIGHT = 5;
 const MIN_MASK_WIDTH = 8;
+const STAR_TYPE_ORDER: Record<StarItemType, number> = {
+  sentence: 0,
+  connectedSpeech: 1,
+  vocabulary: 2,
+};
 const PLAYER_CONFIG_STORAGE_KEY = "lingua-mate:player-config:v1";
 const PLAY_PROGRESS_STORAGE_KEY = "lingua-mate:play-progress:v1";
 const STAR_COLLECTION_STORAGE_KEY = "lingua-mate:stars:v1";
@@ -550,16 +555,20 @@ export default function App() {
     return createEmptyStarCollection(starLessonInfo);
   }, [starCollections, starLessonInfo]);
   const starredIds = useMemo(() => new Set(currentStarCollection?.items.map((item) => item.id) ?? []), [currentStarCollection]);
-  const sentenceStars = useMemo(
-    () => currentStarCollection?.items.filter((item): item is SentenceStarItem => item.type === "sentence") ?? [],
-    [currentStarCollection],
-  );
-  const connectedSpeechStars = useMemo(
-    () => currentStarCollection?.items.filter((item): item is NoteStarItem => item.type === "connectedSpeech") ?? [],
-    [currentStarCollection],
-  );
-  const vocabularyStars = useMemo(
-    () => currentStarCollection?.items.filter((item): item is NoteStarItem => item.type === "vocabulary") ?? [],
+  const timelineStars = useMemo(
+    () =>
+      [...(currentStarCollection?.items ?? [])].sort((a, b) => {
+        const startDelta = a.snapshot.start - b.snapshot.start;
+        if (startDelta !== 0) return startDelta;
+
+        const endDelta = a.snapshot.end - b.snapshot.end;
+        if (endDelta !== 0) return endDelta;
+
+        const typeDelta = STAR_TYPE_ORDER[a.type] - STAR_TYPE_ORDER[b.type];
+        if (typeDelta !== 0) return typeDelta;
+
+        return a.id.localeCompare(b.id);
+      }),
     [currentStarCollection],
   );
   const starCount = currentStarCollection?.items.length ?? 0;
@@ -1640,14 +1649,8 @@ export default function App() {
 
             {studyPanelMode === "stars" ? (
               <div className="stars-panel">
-                <div className="collection-summary">
-                  <span>{starCount} starred item{starCount === 1 ? "" : "s"}</span>
-                  <span>{starLessonInfo?.fingerprint ?? ""}</span>
-                </div>
                 {starImportError ? <p className="import-error">{starImportError}</p> : null}
-                {renderStarSection("Sentences", sentenceStars, "No starred sentences yet.")}
-                {renderStarSection("Connected speech", connectedSpeechStars, "No starred connected-speech notes yet.")}
-                {renderStarSection("Vocabulary", vocabularyStars, "No starred vocabulary notes yet.")}
+                {renderStarSection("Timeline", timelineStars, "No starred items yet.")}
               </div>
             ) : (
               <div className="notes-panel">
