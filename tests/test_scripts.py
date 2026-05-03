@@ -16,6 +16,7 @@ import generate_transcript
 import translate_chunks_with_codex
 import apply_chunks_to_template
 import enrich_lesson_with_codex
+import download_bilibili
 
 
 class PrepareMediaTests(unittest.TestCase):
@@ -261,6 +262,73 @@ class EnrichLessonTests(unittest.TestCase):
         self.assertEqual(updated, 2)
         self.assertEqual(lesson["chunks"][0]["readThrough"][0]["original"], "new")
         self.assertEqual(lesson["chunks"][0]["vocabulary"][0]["original"], "new vocab")
+
+
+class DownloadBilibiliTests(unittest.TestCase):
+    def test_classify_accepts_concrete_video_url(self):
+        parsed = download_bilibili.classify_bilibili_url("https://www.bilibili.com/video/BV1abc12345?p=3")
+
+        self.assertEqual(parsed.video_id, "BV1abc12345")
+        self.assertEqual(parsed.page, 3)
+
+    def test_classify_rejects_non_video_url(self):
+        with self.assertRaises(ValueError):
+            download_bilibili.classify_bilibili_url("https://search.bilibili.com/all?keyword=english")
+
+    def test_extract_page_number_defaults_to_first_page(self):
+        self.assertEqual(download_bilibili.extract_page_number("https://www.bilibili.com/video/av123"), 1)
+        self.assertEqual(download_bilibili.extract_page_number("https://www.bilibili.com/video/av123?p=bad"), 1)
+
+    def test_sanitize_title_removes_unsafe_characters(self):
+        self.assertEqual(download_bilibili.sanitize_title(" Hello / Bili：Video? "), "HelloBiliVideo")
+        self.assertEqual(download_bilibili.sanitize_title("???", "fallback"), "fallback")
+
+    def test_select_streams_uses_requested_quality_when_available(self):
+        selection = download_bilibili.select_streams(
+            {
+                "dash": {
+                    "video": [
+                        {"id": 64, "baseUrl": "https://video-720", "bandwidth": 1},
+                        {"id": 80, "baseUrl": "https://video-1080", "bandwidth": 1},
+                    ],
+                    "audio": [
+                        {"id": 30216, "baseUrl": "https://audio-low"},
+                        {"id": 30280, "baseUrl": "https://audio-high"},
+                    ],
+                }
+            },
+            requested_quality=64,
+        )
+
+        self.assertEqual(selection.video_url, "https://video-720")
+        self.assertEqual(selection.audio_url, "https://audio-high")
+        self.assertEqual(selection.quality, 64)
+
+    def test_select_streams_falls_back_to_best_quality(self):
+        selection = download_bilibili.select_streams(
+            {
+                "dash": {
+                    "video": [
+                        {"id": 32, "baseUrl": "https://video-480", "bandwidth": 10},
+                        {"id": 80, "baseUrl": "https://video-1080", "bandwidth": 1},
+                    ],
+                    "audio": [{"id": 30216, "baseUrl": "https://audio"}],
+                }
+            },
+            requested_quality=120,
+        )
+
+        self.assertEqual(selection.video_url, "https://video-1080")
+        self.assertEqual(selection.quality, 80)
+
+    def test_build_ffmpeg_command(self):
+        command = download_bilibili.build_ffmpeg_command(
+            Path("video.m4s"),
+            Path("audio.m4s"),
+            Path("out.mp4"),
+        )
+
+        self.assertEqual(command, ["ffmpeg", "-y", "-i", "video.m4s", "-i", "audio.m4s", "-c", "copy", "out.mp4"])
 
 
 if __name__ == "__main__":

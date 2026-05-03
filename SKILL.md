@@ -11,6 +11,8 @@ Turn a local English video or podcast into a Vite study player with Chinese subt
 
 Use this skill when the user provides or references a local English media file and wants a Chinese-output webpage for language learning. V1 is designed for 5-30 minute videos or podcasts.
 
+If the user provides a Bilibili URL instead of a local file, first confirm it is a concrete `/video/BV...` or `/video/av...` link, download it locally, then continue with the normal media pipeline.
+
 ## Requirements
 
 Check these before processing:
@@ -19,6 +21,7 @@ Check these before processing:
 - A local `whisper` CLI is installed and available on `PATH`.
 - Node.js and `pnpm` are available for the Vite template.
 - The user has permission to process the media.
+- For private or high-quality Bilibili videos, the user may need to provide a `SESSDATA` value or set `BILIBILI_SESSDATA`.
 
 Do not require cloud transcription or runtime AI calls from the generated webpage. Codex/cc should generate translation and learning content into JSON files before the page runs.
 
@@ -26,9 +29,11 @@ Do not require cloud transcription or runtime AI calls from the generated webpag
 
 This skill should run as an automatic local pipeline. Given an English video or podcast, the agent should:
 
-1. Extract and split the transcript locally.
-2. Create a lite translation subagent for English-to-Chinese chunk translation and learning notes.
-3. Save the translated result as JSON in the generated material folder.
+1. Determine whether the source material is a local file or a concrete Bilibili video link.
+2. If it is a Bilibili link, download it into a local folder named after the video.
+3. Extract and split the transcript locally.
+4. Create a lite translation subagent for English-to-Chinese chunk translation and learning notes.
+5. Save the translated result as JSON in the generated material folder.
 
 Do not stop after transcription unless the user explicitly asks for transcript-only output.
 
@@ -49,7 +54,15 @@ The resource folder should contain the original video or podcast file plus gener
 ## Steps
 
 1. Create the generated material directory outside the reusable skill/template source, for example `materials/<resource-name>/`. Put or copy the original media file in that folder when practical, so the original material and generated JSON stay together.
-2. Run media preparation:
+2. If the source is a Bilibili video link, download it first:
+
+   ```bash
+   pnpm bilibili -- "https://www.bilibili.com/video/BV..." --output-root materials
+   ```
+
+   The downloader supports concrete `/video/BV...` and `/video/av...` links. It rejects search, channel, list, and bangumi pages in v1. If the link has `?p=N`, that part is downloaded; otherwise page 1 is used. For higher-quality restricted videos, pass `--sessdata "$BILIBILI_SESSDATA"` or set the environment variable.
+
+3. Run media preparation:
 
    ```bash
    python3 scripts/prepare_media.py materials/S10E01/S10E01.mp4 --out materials/S10E01 --source-language en --target-language Chinese
@@ -65,20 +78,20 @@ The resource folder should contain the original video or podcast file plus gener
 
    This writes `materials/<media-name>/chunks.json` with `{ "timeStart", "timeEnd", "origin", "translated" }[]`. Leave `translated` empty for Codex/cc to fill with Chinese later.
 
-3. For translation work, create a focused subagent and assign it a lite model such as `gpt-5.4-mini`, because English-to-Chinese chunk translation is straightforward and benefits from parallel, low-cost batching. Ask the subagent to translate `chunks.json` into Chinese and preserve every chunk `id` or timestamp.
-4. Merge filled batches:
+4. For translation work, create a focused subagent and assign it a lite model such as `gpt-5.4-mini`, because English-to-Chinese chunk translation is straightforward and benefits from parallel, low-cost batching. Ask the subagent to translate `chunks.json` into Chinese and preserve every chunk `id` or timestamp.
+5. Merge filled batches:
 
    ```bash
    python3 scripts/merge_batches.py materials/S10E01/lesson.draft.json materials/S10E01/ai_filled/*.json --out materials/S10E01/lesson.json
    ```
 
-5. Validate:
+6. Validate:
 
    ```bash
    python3 scripts/validate_lesson.py materials/S10E01/lesson.json
    ```
 
-6. Enrich a specific finished lesson with connected-speech and vocabulary notes:
+7. Enrich a specific finished lesson with connected-speech and vocabulary notes:
 
    ```bash
    pnpm enrich -- --lesson materials/S10E01/lesson.json
@@ -86,14 +99,14 @@ The resource folder should contain the original video or podcast file plus gener
 
    This step is explicit and targeted. It only updates the named lesson file. Use `--overwrite` only when regenerating existing notes intentionally.
 
-7. Keep generated Library files under `materials/<slug>/`. Register each Library item with the Vite template so the homepage can list multiple Library items:
+8. Keep generated Library files under `materials/<slug>/`. Register each Library item with the Vite template so the homepage can list multiple Library items:
 
    ```bash
    python3 scripts/apply_chunks_to_template.py --chunks materials/S10E01/chunks.json --media materials/S10E01/S10E01.mp4 --lesson-out materials/S10E01/lesson.json --lesson-id S10E01 --link-template
    ```
 
    This updates `assets/vite-template/public/data/lessons.json`, links the Library item under `assets/vite-template/public/data/lessons/<lesson-id>.json`, and keeps `assets/vite-template/public/data/lesson.json` as the latest Library fallback. Copy or symlink media into `assets/vite-template/public/media/`. Keep media paths relative to the Vite public root, such as `/media/source.mp4`.
-8. Run the generated page:
+9. Run the generated page:
 
    ```bash
    pnpm install
