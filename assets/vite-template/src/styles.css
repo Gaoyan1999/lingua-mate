@@ -666,6 +666,22 @@ audio {
   color: var(--text);
 }
 
+.setting-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  color: var(--text);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.setting-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--red);
+}
+
 .shortcut-list {
   display: grid;
   gap: 8px;
