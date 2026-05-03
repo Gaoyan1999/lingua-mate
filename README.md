@@ -35,7 +35,7 @@ pnpm bilibili -- "https://www.bilibili.com/video/BV..."
 For higher-quality videos, provide a Bilibili `SESSDATA` value when you have permission to use it:
 
 ```bash
-pnpm bilibili -- "https://www.bilibili.com/video/BV..." --output-root materials --sessdata "$BILIBILI_SESSDATA"
+pnpm bilibili -- "https://www.bilibili.com/video/BV..." --output-root ../test-lingua-mate/materials --sessdata "$BILIBILI_SESSDATA"
 ```
 
 Split a local video into translation-ready chunks:
@@ -53,7 +53,7 @@ pnpm translate
 Generate connected-speech and vocabulary notes for one finished Library JSON:
 
 ```bash
-pnpm enrich -- --lesson materials/s10e01/lesson.json
+pnpm enrich -- --lesson ../test-lingua-mate/materials/s10e01/lesson.json
 ```
 
 Apply translated S10E01 material to the Vite template:
@@ -74,21 +74,27 @@ pnpm dev
 Generated content is intentionally ignored by git. The canonical generated material path for the current sample is:
 
 ```text
-materials/s10e01/
+../test-lingua-mate/materials/s10e01/
 ```
 
-When applying generated Library material to the reusable Vite template, link or copy the active Library JSON to:
+When applying generated Library material to the reusable Vite template, write the Library list to the working-folder registry:
+
+```text
+../test-lingua-mate/registry.json
+```
+
+The template exposes that registry through:
+
+```text
+assets/vite-template/public/data/registry.json
+```
+
+Each lesson JSON is still linked under:
 
 ```text
 assets/vite-template/public/data/lessons/<lesson-id>.json
 ```
 
-Register it in the Library index:
-
-```text
-assets/vite-template/public/data/lessons.json
-```
-
-The template still supports `assets/vite-template/public/data/lesson.json` as a single-item Library fallback.
+The template still supports `assets/vite-template/public/data/lessons.json` and `assets/vite-template/public/data/lesson.json` as compatibility fallbacks.
 
 The reusable source code lives in `scripts/`, `assets/vite-template/`, `tests/`, and `SKILL.md`.

@@ -72,31 +72,51 @@ def link_media(media_path: Path, media_dir: Path) -> str:
     return f"/media/{media_path.name}"
 
 
-def link_lesson(lesson_path: Path, template_lesson_path: Path) -> None:
-    template_lesson_path.parent.mkdir(parents=True, exist_ok=True)
-    if template_lesson_path.resolve() == lesson_path.resolve():
+def link_file(source_path: Path, link_path: Path) -> None:
+    link_path.parent.mkdir(parents=True, exist_ok=True)
+    if link_path.resolve() == source_path.resolve():
         return
-    if template_lesson_path.exists() or template_lesson_path.is_symlink():
-        if template_lesson_path.is_symlink() and template_lesson_path.resolve() == lesson_path.resolve():
+    if link_path.exists() or link_path.is_symlink():
+        if link_path.is_symlink() and link_path.resolve() == source_path.resolve():
             return
-        if template_lesson_path.is_dir():
-            raise SystemExit(f"Template Library path is a directory: {template_lesson_path}")
-        template_lesson_path.unlink()
-    relative_target = os.path.relpath(lesson_path.resolve(), template_lesson_path.parent.resolve())
-    template_lesson_path.symlink_to(relative_target)
+        if link_path.is_dir():
+            raise SystemExit(f"Template Library path is a directory: {link_path}")
+        link_path.unlink()
+    relative_target = os.path.relpath(source_path.resolve(), link_path.parent.resolve())
+    link_path.symlink_to(relative_target)
+
+
+def load_lesson_entries(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    raw_lessons = data if isinstance(data, list) else data.get("lessons", []) if isinstance(data, dict) else []
+    if not isinstance(raw_lessons, list):
+        return []
+    return [item for item in raw_lessons if isinstance(item, dict)]
+
+
+def update_lesson_registry(registry_path: Path, entry: dict[str, Any], seed_path: Path | None = None) -> None:
+    lessons: list[dict[str, Any]] = []
+    if registry_path.exists():
+        lessons = load_lesson_entries(registry_path)
+    elif seed_path is not None:
+        lessons = load_lesson_entries(seed_path)
+    lessons = [item for item in lessons if item.get("id") != entry["id"]]
+
+    lessons.append(entry)
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(json.dumps({"lessons": lessons}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def update_lesson_index(index_path: Path, entry: dict[str, Any]) -> None:
-    lessons: list[dict[str, Any]] = []
-    if index_path.exists():
-        data = json.loads(index_path.read_text(encoding="utf-8"))
-        raw_lessons = data if isinstance(data, list) else data.get("lessons", []) if isinstance(data, dict) else []
-        if isinstance(raw_lessons, list):
-            lessons = [item for item in raw_lessons if isinstance(item, dict) and item.get("id") != entry["id"]]
+    update_lesson_registry(index_path, entry)
 
-    lessons.append(entry)
-    index_path.parent.mkdir(parents=True, exist_ok=True)
-    index_path.write_text(json.dumps({"lessons": lessons}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+def default_registry_path(lesson_path: Path) -> Path:
+    if lesson_path.parent.parent.name == "materials":
+        return lesson_path.parent.parent.parent / "registry.json"
+    return lesson_path.parent.parent / "registry.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -107,6 +127,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lesson-out", type=Path, help="Canonical Library JSON output path.")
     parser.add_argument("--lesson-id", help="Stable id used in the template Library list. Defaults to the Library title slug.")
     parser.add_argument("--lesson-title", help="Display title used in the Library item and template Library list.")
+    parser.add_argument("--registry", type=Path, help="Canonical Library registry JSON path. Defaults beside the working folder.")
     parser.add_argument("--link-template", action="store_true", help="Register the Library item in the Vite template public data.")
     return parser.parse_args()
 
@@ -118,10 +139,13 @@ def main() -> int:
     template_dir = args.template
     lesson_title = args.lesson_title or media_path.stem
     lesson_id = slugify(args.lesson_id or lesson_title, media_path.stem)
+    template_data_dir = template_dir / "public" / "data"
     template_lesson_path = template_dir / "public" / "data" / "lesson.json"
     template_catalog_lesson_path = template_dir / "public" / "data" / "lessons" / f"{lesson_id}.json"
     template_index_path = template_dir / "public" / "data" / "lessons.json"
+    template_registry_path = template_data_dir / "registry.json"
     lesson_path = args.lesson_out or (template_catalog_lesson_path if args.link_template else template_lesson_path)
+    registry_path = args.registry or default_registry_path(lesson_path)
     media_dir = template_dir / "public" / "media"
 
     if not chunks_path.exists():
@@ -134,23 +158,24 @@ def main() -> int:
     lesson = build_lesson(load_chunks(chunks_path), media_path, public_media_path, lesson_title)
     lesson_path.write_text(json.dumps(lesson, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if args.link_template:
-        link_lesson(lesson_path, template_lesson_path)
-        link_lesson(lesson_path, template_catalog_lesson_path)
-        update_lesson_index(
-            template_index_path,
-            {
-                "id": lesson_id,
-                "title": lesson["media"]["title"],
-                "lessonPath": f"/data/lessons/{lesson_id}.json",
-                "mediaType": lesson["media"]["type"],
-                "duration": lesson["media"]["duration"],
-                "source": lesson["languages"]["source"],
-                "target": lesson["languages"]["target"],
-            },
-        )
+        entry = {
+            "id": lesson_id,
+            "title": lesson["media"]["title"],
+            "lessonPath": f"/data/lessons/{lesson_id}.json",
+            "mediaType": lesson["media"]["type"],
+            "duration": lesson["media"]["duration"],
+            "source": lesson["languages"]["source"],
+            "target": lesson["languages"]["target"],
+        }
+        update_lesson_registry(registry_path, entry, seed_path=template_index_path)
+        link_file(lesson_path, template_lesson_path)
+        link_file(lesson_path, template_catalog_lesson_path)
+        link_file(registry_path, template_registry_path)
+        link_file(registry_path, template_index_path)
     print(f"Wrote {lesson_path.resolve()}")
     print(f"Media path: {public_media_path}")
     if args.link_template:
+        print(f"Registry: {registry_path.resolve()}")
         print(f"Registered Library item: {lesson_id}")
     print(f"Chunks: {len(lesson['chunks'])}")
     return 0

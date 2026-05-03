@@ -1,4 +1,14 @@
-import { ChangeEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CSSProperties,
+  ChangeEvent,
+  KeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  SyntheticEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeft,
   Clock,
@@ -18,9 +28,11 @@ import {
 import type { Lesson, LessonChunk, LessonIndex, LessonIndexEntry, MediaType } from "./types";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
-const INDEX_URL = "/data/lessons.json";
+const REGISTRY_URL = "/data/registry.json";
+const INDEX_URLS = [REGISTRY_URL, "/data/lessons.json"];
 const LEGACY_LESSON_URL = "/data/lesson.json";
 const DEFAULT_LESSON_ID = "template";
+const DEFAULT_MEDIA_ASPECT_RATIO = 16 / 9;
 const DEFAULT_SUBTITLE_MASK = { x: 8, y: 78, width: 84, height: 12 };
 const MIN_MASK_HEIGHT = 5;
 const MIN_MASK_WIDTH = 8;
@@ -310,7 +322,9 @@ function currentLibraryParam(): string | null {
 
 export default function App() {
   const mediaRef = useRef<HTMLVideoElement & HTMLAudioElement>(null);
+  const mediaColumnRef = useRef<HTMLDivElement | null>(null);
   const mediaFrameRef = useRef<HTMLDivElement | null>(null);
+  const titleRowRef = useRef<HTMLDivElement | null>(null);
   const lyricsListRef = useRef<HTMLDivElement | null>(null);
   const chunkRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const maskDragRef = useRef<MaskDragState | null>(null);
@@ -337,6 +351,8 @@ export default function App() {
   const [isVideoPaused, setIsVideoPaused] = useState(true);
   const [playProgress, setPlayProgress] = useState<PlaybackProgressMap>(() => readPlaybackProgress());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [mediaAspectRatio, setMediaAspectRatio] = useState(DEFAULT_MEDIA_ASPECT_RATIO);
+  const [mediaFrameWidth, setMediaFrameWidth] = useState<number | null>(null);
 
   const activeIndex = findActiveChunk(lesson.chunks, currentTime);
   const focusIndex = selectedIndex >= 0 ? selectedIndex : activeIndex;
@@ -368,23 +384,30 @@ export default function App() {
     });
   }, [lesson.chunks, query]);
 
+  const mediaFrameStyle = {
+    "--media-aspect-ratio": String(mediaAspectRatio),
+    ...(mediaFrameWidth ? { "--media-frame-width": `${Math.round(mediaFrameWidth)}px` } : {}),
+  } as CSSProperties;
+
   useEffect(() => {
     let cancelled = false;
 
     async function loadCatalog() {
-      try {
-        const response = await fetch(INDEX_URL, { cache: "no-store" });
-        if (response.ok) {
-          const nextIndex: unknown = await response.json();
-          const nextCatalog = normalizeLessonIndex(nextIndex);
-          if (!cancelled && nextCatalog.length > 0) {
-            setCatalog(nextCatalog);
-            setCatalogStatus("ready");
-            return;
+      for (const indexUrl of INDEX_URLS) {
+        try {
+          const response = await fetch(indexUrl, { cache: "no-store" });
+          if (response.ok) {
+            const nextIndex: unknown = await response.json();
+            const nextCatalog = normalizeLessonIndex(nextIndex);
+            if (!cancelled && nextCatalog.length > 0) {
+              setCatalog(nextCatalog);
+              setCatalogStatus("ready");
+              return;
+            }
           }
+        } catch {
+          // Clean checkouts do not include generated Library registries.
         }
-      } catch {
-        // Clean checkouts do not include generated Library indexes.
       }
 
       try {
@@ -524,6 +547,52 @@ export default function App() {
       media.currentTime = nextTime;
     }
   }, [lesson.media.duration, lesson.media.path, lessonStatus]);
+
+  useEffect(() => {
+    if (lesson.media.type !== "video" || lessonStatus !== "ready") {
+      setMediaFrameWidth(null);
+      return;
+    }
+
+    const column = mediaColumnRef.current;
+    if (!column) return;
+
+    function updateFrameWidth() {
+      const columnElement = mediaColumnRef.current;
+      if (!columnElement) return;
+      if (window.matchMedia("(max-width: 760px)").matches) {
+        setMediaFrameWidth(null);
+        return;
+      }
+
+      const styles = window.getComputedStyle(columnElement);
+      const horizontalPadding = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+      const verticalPadding = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+      const rowGap = parseFloat(styles.rowGap) || 0;
+      const contentWidth = Math.max(0, columnElement.clientWidth - horizontalPadding);
+      const contentHeight = Math.max(0, columnElement.clientHeight - verticalPadding);
+      const titleHeight = titleRowRef.current?.getBoundingClientRect().height ?? 0;
+      const transcriptReserve = isStudyOpen ? 250 : 190;
+      const availableVideoHeight = contentHeight - titleHeight - transcriptReserve - rowGap * 2;
+      if (contentWidth <= 0 || availableVideoHeight <= 0) {
+        setMediaFrameWidth(null);
+        return;
+      }
+
+      const nextWidth = Math.min(contentWidth, Math.max(260, availableVideoHeight * mediaAspectRatio));
+      setMediaFrameWidth((current) => (current !== null && Math.abs(current - nextWidth) < 1 ? current : nextWidth));
+    }
+
+    updateFrameWidth();
+    const resizeObserver = new ResizeObserver(updateFrameWidth);
+    resizeObserver.observe(column);
+    if (titleRowRef.current) resizeObserver.observe(titleRowRef.current);
+    window.addEventListener("resize", updateFrameWidth);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateFrameWidth);
+    };
+  }, [isStudyOpen, lesson.media.type, lessonStatus, mediaAspectRatio]);
 
 
   useEffect(() => {
@@ -699,6 +768,13 @@ export default function App() {
   function handleVideoPause() {
     setIsVideoPaused(true);
     saveCurrentPlaybackProgress(true);
+  }
+
+  function handleMediaMetadata(event: SyntheticEvent<HTMLVideoElement | HTMLAudioElement>) {
+    const element = event.currentTarget;
+    if (element instanceof HTMLVideoElement && element.videoWidth > 0 && element.videoHeight > 0) {
+      setMediaAspectRatio(element.videoWidth / element.videoHeight);
+    }
   }
 
   function startMaskDrag(event: ReactPointerEvent<HTMLDivElement>, mode: MaskDragMode) {
@@ -913,8 +989,8 @@ export default function App() {
   return (
     <main className="app-shell">
       <section className={`lesson-stage${isStudyOpen ? "" : " study-collapsed"}`} aria-label="Media player">
-        <div className="media-column">
-          <div className="title-row">
+        <div className="media-column" ref={mediaColumnRef}>
+          <div className="title-row" ref={titleRowRef}>
             <div>
               <p className="eyebrow">{lesson.languages.source} to {lesson.languages.target}</p>
               <h1>{lesson.media.title}</h1>
@@ -966,8 +1042,12 @@ export default function App() {
             </div>
           </div>
 
-          <div className="media-frame" ref={mediaFrameRef}>
-            {lessonStatus === "loading" ? (
+          <div
+            className={`media-frame ${lesson.media.type === "video" ? "video-frame" : "audio-frame"}`}
+            ref={mediaFrameRef}
+            style={mediaFrameStyle}
+          >
+            {lessonStatus === "idle" || lessonStatus === "loading" ? (
               <p className="media-message">Loading media...</p>
             ) : lessonStatus === "error" ? (
               <p className="media-message">{lessonError}</p>
@@ -977,6 +1057,7 @@ export default function App() {
                 ref={mediaRef}
                 controls
                 src={lesson.media.path}
+                onLoadedMetadata={handleMediaMetadata}
                 onTimeUpdate={onTimeUpdate}
                 onPause={() => saveCurrentPlaybackProgress(true)}
                 onEnded={() => saveCurrentPlaybackProgress(true)}
@@ -987,6 +1068,7 @@ export default function App() {
                 ref={mediaRef}
                 controls
                 src={lesson.media.path}
+                onLoadedMetadata={handleMediaMetadata}
                 onTimeUpdate={onTimeUpdate}
                 onPlay={handleVideoPlay}
                 onPause={handleVideoPause}
