@@ -507,6 +507,7 @@ export default function App() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [speed, setSpeed] = useState(initialPlayerConfig.speed);
   const [seekStep, setSeekStep] = useState(initialPlayerConfig.seekStep);
+  const [seekStepInput, setSeekStepInput] = useState(String(initialPlayerConfig.seekStep));
   const [isSubtitleMaskEnabled, setIsSubtitleMaskEnabled] = useState(initialPlayerConfig.isSubtitleMaskEnabled);
   const [shouldUnmaskOnPause, setShouldUnmaskOnPause] = useState(initialPlayerConfig.shouldUnmaskOnPause);
   const [subtitleMask, setSubtitleMask] = useState<SubtitleMask>(initialPlayerConfig.subtitleMask);
@@ -669,6 +670,12 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    if (isSettingsOpen) {
+      setSeekStepInput(String(seekStep));
+    }
+  }, [isSettingsOpen, seekStep]);
+
+  useEffect(() => {
     if (!starLessonInfo) return;
     const stored = starCollections[starLessonInfo.id];
     if (!stored || stored.lesson.fingerprint === starLessonInfo.fingerprint) return;
@@ -825,20 +832,23 @@ export default function App() {
       if (isSettingsOpen) {
         if (event.code === "Escape") {
           event.preventDefault();
-          setIsSettingsOpen(false);
+          closeSettings();
         }
         return;
       }
 
       const target = event.target as HTMLElement | null;
-      const shouldIgnore =
+      const isTextEntryTarget =
         target?.tagName === "INPUT" ||
         target?.tagName === "TEXTAREA" ||
         target?.tagName === "SELECT" ||
-        target?.tagName === "BUTTON" ||
         target?.isContentEditable;
+      const isButtonTarget = target?.tagName === "BUTTON";
+      const isSeekKey = event.code === "ArrowLeft" || event.code === "ArrowRight";
+      const isTranscriptRowTarget = Boolean(target?.closest(".lyric-row-main"));
+      const isTranscriptPlayPauseKey = isTranscriptRowTarget && event.code === "Space";
 
-      if (shouldIgnore) return;
+      if (isTextEntryTarget || (isButtonTarget && !isSeekKey && !isTranscriptPlayPauseKey)) return;
 
       const isPlainKey = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
       if (
@@ -896,6 +906,7 @@ export default function App() {
     lesson.media.type,
     maskShortcut,
     seekStep,
+    seekStepInput,
     studyNotesShortcut,
   ]);
 
@@ -1117,9 +1128,22 @@ export default function App() {
   }
 
   function changeSeekStep(event: ChangeEvent<HTMLInputElement>) {
-    const value = Number(event.target.value);
-    if (!Number.isFinite(value)) return;
-    setSeekStep(Math.min(Math.max(Math.round(value), 1), 60));
+    const value = event.target.value;
+    if (value === "" || /^\d+$/.test(value)) {
+      setSeekStepInput(value);
+    }
+  }
+
+  function commitSeekStep(value = seekStepInput) {
+    const nextValue = value.trim() === "" ? DEFAULT_PLAYER_CONFIG.seekStep : Number(value);
+    const nextSeekStep = Number.isFinite(nextValue) ? clamp(Math.round(nextValue), 1, 60) : DEFAULT_PLAYER_CONFIG.seekStep;
+    setSeekStep(nextSeekStep);
+    setSeekStepInput(String(nextSeekStep));
+  }
+
+  function closeSettings() {
+    commitSeekStep();
+    setIsSettingsOpen(false);
   }
 
   function changeMaskShortcut(event: ChangeEvent<HTMLInputElement>) {
@@ -1278,6 +1302,12 @@ export default function App() {
   }
 
   function onLyricsKeyDown(event: KeyboardEvent<HTMLElement>, chunk: LessonChunk) {
+    if (event.code === "Space") {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     if (event.key === "Enter") {
       seekTo(chunk);
       return;
@@ -1291,6 +1321,12 @@ export default function App() {
       const nextIndex = Math.min(Math.max(index + direction, 0), lesson.chunks.length - 1);
       focusTranscriptRow(nextIndex);
     }
+  }
+
+  function onLyricsKeyUp(event: KeyboardEvent<HTMLElement>) {
+    if (event.code !== "Space") return;
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   function renderStarSection(title: string, items: StarItem[], emptyText: string) {
@@ -1441,12 +1477,16 @@ export default function App() {
                 type="button"
                 className={`panel-toggle${studyPanelMode === "stars" && isStudyOpen ? " active" : ""}`}
                 onClick={() => {
+                  if (isStudyOpen && studyPanelMode === "stars") {
+                    setIsStudyOpen(false);
+                    return;
+                  }
                   setStudyPanelMode("stars");
                   setIsStudyOpen(true);
                 }}
                 aria-expanded={isStudyOpen && studyPanelMode === "stars"}
                 aria-controls="study-notes"
-                title="Show starred items"
+                title={isStudyOpen && studyPanelMode === "stars" ? "Hide starred items" : "Show starred items"}
               >
                 <Star size={18} />
                 <span>Stars {starCount}</span>
@@ -1607,8 +1647,12 @@ export default function App() {
                         chunkRefs.current[chunk.id] = node;
                       }}
                       className="lyric-row-main"
-                      onClick={() => seekTo(chunk)}
+                      onClick={(event) => {
+                        if (event.detail === 0) return;
+                        seekTo(chunk);
+                      }}
                       onKeyDown={(event) => onLyricsKeyDown(event, chunk)}
+                      onKeyUp={onLyricsKeyUp}
                     >
                       <span className="chunk-time">{formatTime(chunk.start)}-{formatTime(chunk.end)}</span>
                       <span className="lyric-text">
@@ -1768,7 +1812,7 @@ export default function App() {
       </section>
 
       {isSettingsOpen ? (
-        <div className="modal-backdrop" role="presentation" onClick={() => setIsSettingsOpen(false)}>
+        <div className="modal-backdrop" role="presentation" onClick={closeSettings}>
           <section
             className="settings-modal"
             role="dialog"
@@ -1784,7 +1828,7 @@ export default function App() {
               <button
                 type="button"
                 className="icon-button"
-                onClick={() => setIsSettingsOpen(false)}
+                onClick={closeSettings}
                 title="Close settings"
                 aria-label="Close settings"
               >
@@ -1794,7 +1838,20 @@ export default function App() {
 
             <label className="setting-field">
               <span>Back / forward seconds</span>
-              <input min={1} max={60} type="number" value={seekStep} onChange={changeSeekStep} />
+              <input
+                min={1}
+                max={60}
+                type="number"
+                value={seekStepInput}
+                onChange={changeSeekStep}
+                onBlur={() => commitSeekStep()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    commitSeekStep();
+                    event.currentTarget.blur();
+                  }
+                }}
+              />
             </label>
             <label className="setting-field">
               <span>Subtitle mask shortcut</span>

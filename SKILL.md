@@ -145,7 +145,7 @@ The final `lesson.json` must have:
 - `original`
 - `explanation`
 
-`vocabulary` is an array of concise comprehension notes:
+`vocabulary` is an array of concise word and phrase notes:
 
 - `original`
 - `explanation`
@@ -171,8 +171,8 @@ The working-folder `registry.json` Library index should be:
 ## Content Guidance
 
 - Keep translations natural rather than word-for-word when needed.
-- Use `readThrough` for listening issues: reductions, linking, weak forms, dropped sounds, stress, contractions, or fast-speech phrasing.
-- Choose vocabulary that helps comprehension: idioms, collocations, grammar patterns, advanced words, cultural references, or easily confused phrases.
+- Use `readThrough` for connected speech and spoken-listening issues: linking, reductions, weak forms, dropped sounds, stress, contractions, fast-speech phrasing, plus high-frequency spoken habits/fillers/discourse markers that are common in everyday English and can make audio hard to parse.
+- Use `vocabulary` for words and phrases: idioms, phrasal verbs, collocations, grammar patterns, advanced words, cultural references, or easily confused phrases. Do not put connected-speech/linking explanations here unless the item is primarily a lexical phrase.
 - Match `readThrough` and `vocabulary` note selection to the learner's English level. Beginner learners need more common phrase help; advanced learners need fewer obvious notes and more nuance.
 - Keep notes concise and selective. Prefer 0-3 useful entries per section per chunk, with no filler.
 - If source and target language are the same, still provide read-through and vocabulary notes.

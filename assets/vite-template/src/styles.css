@@ -717,7 +717,18 @@ audio {
 }
 
 .lyric-row.selected {
-  box-shadow: inset 4px 0 0 var(--red);
+  border-color: transparent;
+  background: var(--panel-hover);
+  box-shadow: none;
+}
+
+.lyric-row.selected.playing {
+  border-color: rgb(255 0 51 / 34%);
+  background: var(--red-soft);
+}
+
+.lyric-row-main:focus-visible {
+  outline: none;
 }
 
 .lyric-row-main,

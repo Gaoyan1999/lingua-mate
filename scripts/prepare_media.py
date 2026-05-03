@@ -364,8 +364,9 @@ def write_ai_batches(lesson: dict[str, Any], output_dir: Path, batch_size: int) 
             "instructions": (
                 "Fill translation, readThrough, and vocabulary for each chunk. "
                 "Preserve ids, timestamps, and sourceText exactly. readThrough is an array "
-                "of connected-speech listening notes. vocabulary is an array of concise "
-                "comprehension notes. Each note needs original and explanation."
+                "of connected-speech and spoken-listening notes, including linking and common "
+                "everyday spoken habits/fillers that can make audio hard to parse. vocabulary "
+                "is an array of concise word and phrase notes. Each note needs original and explanation."
             ),
             "languages": lesson["languages"],
             "chunks": batch_chunks,
