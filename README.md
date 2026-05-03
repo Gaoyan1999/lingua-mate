@@ -6,7 +6,7 @@ Lingua Mate is a Codex skill package for turning a local English video or podcas
 
 - Extracts audio from local media with FFmpeg.
 - Transcribes English speech with local Whisper.
-- Splits transcript text into pause-based chunks.
+- Splits transcript text into pause- and sentence-aware chunks.
 - Translates chunk JSON into Simplified Chinese with Codex CLI batches.
 - Applies translated material to a Vite learner page with a Library homepage.
 - Keeps generated Library material out of source control.
@@ -43,6 +43,8 @@ Split a local video into translation-ready chunks:
 ```bash
 pnpm split -- ./S10E01.mp4 --whisper-model tiny.en --keep-work
 ```
+
+By default, sentence-aware chunking caps grouped transcript text at two sentence-ending fragments per chunk. Tune it with `--max-sentences-per-chunk` or disable that cap with `--max-sentences-per-chunk 0`.
 
 Translate the configured material chunks:
 

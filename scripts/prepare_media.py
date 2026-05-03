@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -16,6 +17,26 @@ from typing import Any, Iterable
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg"}
+SENTENCE_BOUNDARY_RE = re.compile(r"[^.!?]+[.!?]+(?:['\"])?|[^.!?]+$")
+SENTENCE_DOT_PLACEHOLDER = "<prd>"
+SENTENCE_ABBREVIATIONS = (
+    "Mr.",
+    "Mrs.",
+    "Ms.",
+    "Dr.",
+    "Prof.",
+    "Sr.",
+    "Jr.",
+    "St.",
+    "vs.",
+    "etc.",
+    "e.g.",
+    "i.e.",
+    "a.m.",
+    "p.m.",
+    "U.S.",
+    "U.K.",
+)
 
 
 @dataclass
@@ -173,6 +194,96 @@ def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+def split_text_sentences(text: str) -> list[str]:
+    protected = text
+    for abbreviation in SENTENCE_ABBREVIATIONS:
+        protected = re.sub(
+            re.escape(abbreviation),
+            lambda match: match.group(0).replace(".", SENTENCE_DOT_PLACEHOLDER),
+            protected,
+            flags=re.IGNORECASE,
+        )
+    sentences = [
+        normalize_text(match.group(0).replace(SENTENCE_DOT_PLACEHOLDER, "."))
+        for match in SENTENCE_BOUNDARY_RE.finditer(protected)
+    ]
+    return [sentence for sentence in sentences if sentence]
+
+
+def distribute_text_segments(texts: list[str], start: float, end: float) -> list[Segment]:
+    duration = max(0.0, end - start)
+    total_chars = sum(len(text) for text in texts)
+    if duration <= 0 or total_chars <= 0:
+        return [Segment(start=start, end=end, text=text) for text in texts]
+
+    fragments: list[Segment] = []
+    cursor = start
+    consumed_chars = 0
+    for index, text in enumerate(texts):
+        if index == len(texts) - 1:
+            text_end = end
+        else:
+            consumed_chars += len(text)
+            text_end = start + duration * consumed_chars / total_chars
+        fragments.append(Segment(start=cursor, end=text_end, text=text))
+        cursor = text_end
+    return fragments
+
+
+def split_long_segment(segment: Segment, max_fragment_duration: float) -> list[Segment]:
+    duration = max(0.0, segment.end - segment.start)
+    if max_fragment_duration <= 0 or duration <= max_fragment_duration:
+        return [segment]
+
+    words = segment.text.split()
+    if len(words) <= 1:
+        return [segment]
+
+    part_count = min(len(words), math.ceil(duration / max_fragment_duration))
+    parts: list[str] = []
+    cursor = 0
+    for index in range(part_count):
+        remaining_words = len(words) - cursor
+        remaining_parts = part_count - index
+        take = math.ceil(remaining_words / remaining_parts)
+        parts.append(" ".join(words[cursor : cursor + take]))
+        cursor += take
+
+    part_duration = duration / part_count
+    return [
+        Segment(
+            start=segment.start + index * part_duration,
+            end=segment.end if index == part_count - 1 else segment.start + (index + 1) * part_duration,
+            text=part,
+        )
+        for index, part in enumerate(parts)
+    ]
+
+
+def split_segment_sentences(segment: Segment, max_fragment_duration: float = 0.0) -> list[Segment]:
+    sentences = split_text_sentences(segment.text)
+    if len(sentences) <= 1:
+        return split_long_segment(segment, max_fragment_duration)
+
+    sentence_segments = distribute_text_segments(sentences, segment.start, segment.end)
+    fragments: list[Segment] = []
+    for sentence_segment in sentence_segments:
+        fragments.extend(split_long_segment(sentence_segment, max_fragment_duration))
+    return fragments
+
+
+def split_segments_into_sentences(segments: list[Segment], max_fragment_duration: float = 0.0) -> list[Segment]:
+    sentence_segments: list[Segment] = []
+    for segment in segments:
+        sentence_segments.extend(split_segment_sentences(segment, max_fragment_duration))
+    return sentence_segments
+
+
+def sentence_count(text: str) -> int:
+    count = len(split_text_sentences(text))
+    return max(1, count)
+
+
 def has_detected_pause(prev_end: float, next_start: float, silences: Iterable[Silence], min_silence: float) -> bool:
     for silence in silences:
         if silence.end < prev_end:
@@ -192,9 +303,11 @@ def chunk_segments(
     min_pause: float = 0.7,
     min_chunk_duration: float = 1.0,
     max_chunk_duration: float = 18.0,
+    max_sentences_per_chunk: int = 2,
 ) -> list[dict[str, Any]]:
     if not segments:
         return []
+    segments = split_segments_into_sentences(segments, max_chunk_duration)
     silences = sorted(silences or [], key=lambda item: item.start)
     chunks: list[dict[str, Any]] = []
     current: list[Segment] = [segments[0]]
@@ -226,8 +339,14 @@ def chunk_segments(
         pause_boundary = gap >= min_pause or has_detected_pause(previous.end, segment.start, silences, min_pause)
         split_for_pause = pause_boundary and current_duration >= min_chunk_duration
         split_for_length = duration_if_added > max_chunk_duration
+        current_sentences = sum(sentence_count(item.text) for item in current)
+        split_for_sentences = (
+            max_sentences_per_chunk > 0
+            and current_sentences >= max_sentences_per_chunk
+            and current_duration >= min_chunk_duration
+        )
 
-        if split_for_pause or split_for_length:
+        if split_for_pause or split_for_length or split_for_sentences:
             flush()
         current.append(segment)
 
@@ -289,6 +408,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-pause", type=float, default=0.7, help="Pause length in seconds that can split chunks.")
     parser.add_argument("--min-chunk-duration", type=float, default=1.0, help="Avoid pause splits below this duration.")
     parser.add_argument("--max-chunk-duration", type=float, default=18.0, help="Force splits above this duration.")
+    parser.add_argument("--max-sentences-per-chunk", type=int, default=2, help="Split chunks after this many sentence-ending punctuation marks. Use 0 to disable the sentence-count cap.")
     parser.add_argument("--silence-noise", default="-35dB", help="FFmpeg silencedetect noise threshold.")
     parser.add_argument("--batch-size", type=int, default=25, help="Chunks per AI batch file.")
     parser.add_argument("--media-public-path", help="Media path used by the Vite app, for example /media/source.mp4.")
@@ -324,6 +444,7 @@ def main() -> int:
         min_pause=args.min_pause,
         min_chunk_duration=args.min_chunk_duration,
         max_chunk_duration=args.max_chunk_duration,
+        max_sentences_per_chunk=args.max_sentences_per_chunk,
     )
     duration = probe_duration(media_path)
     public_media_path = args.media_public_path or f"/media/{media_path.name}"
