@@ -35,8 +35,10 @@ type PlayerConfig = {
   speed: number;
   seekStep: number;
   isSubtitleMaskEnabled: boolean;
+  shouldUnmaskOnPause: boolean;
   subtitleMask: SubtitleMask;
   maskShortcut: string;
+  studyNotesShortcut: string;
   isStudyOpen: boolean;
 };
 type PlaybackProgress = {
@@ -112,8 +114,10 @@ const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   speed: 1,
   seekStep: 5,
   isSubtitleMaskEnabled: false,
+  shouldUnmaskOnPause: true,
   subtitleMask: DEFAULT_SUBTITLE_MASK,
   maskShortcut: "M",
+  studyNotesShortcut: "N",
   isStudyOpen: false,
 };
 
@@ -176,8 +180,13 @@ function readPlayerConfig(): PlayerConfig {
       typeof stored.isSubtitleMaskEnabled === "boolean"
         ? stored.isSubtitleMaskEnabled
         : DEFAULT_PLAYER_CONFIG.isSubtitleMaskEnabled,
+    shouldUnmaskOnPause:
+      typeof stored.shouldUnmaskOnPause === "boolean"
+        ? stored.shouldUnmaskOnPause
+        : DEFAULT_PLAYER_CONFIG.shouldUnmaskOnPause,
     subtitleMask: normalizeSubtitleMask(stored.subtitleMask),
     maskShortcut: normalizeShortcut(stored.maskShortcut, DEFAULT_PLAYER_CONFIG.maskShortcut),
+    studyNotesShortcut: normalizeShortcut(stored.studyNotesShortcut, DEFAULT_PLAYER_CONFIG.studyNotesShortcut),
     isStudyOpen: typeof stored.isStudyOpen === "boolean" ? stored.isStudyOpen : DEFAULT_PLAYER_CONFIG.isStudyOpen,
   };
 }
@@ -319,10 +328,13 @@ export default function App() {
   const [speed, setSpeed] = useState(initialPlayerConfig.speed);
   const [seekStep, setSeekStep] = useState(initialPlayerConfig.seekStep);
   const [isSubtitleMaskEnabled, setIsSubtitleMaskEnabled] = useState(initialPlayerConfig.isSubtitleMaskEnabled);
+  const [shouldUnmaskOnPause, setShouldUnmaskOnPause] = useState(initialPlayerConfig.shouldUnmaskOnPause);
   const [subtitleMask, setSubtitleMask] = useState<SubtitleMask>(initialPlayerConfig.subtitleMask);
   const [maskShortcut, setMaskShortcut] = useState(initialPlayerConfig.maskShortcut);
+  const [studyNotesShortcut, setStudyNotesShortcut] = useState(initialPlayerConfig.studyNotesShortcut);
   const [query, setQuery] = useState("");
   const [isStudyOpen, setIsStudyOpen] = useState(initialPlayerConfig.isStudyOpen);
+  const [isVideoPaused, setIsVideoPaused] = useState(true);
   const [playProgress, setPlayProgress] = useState<PlaybackProgressMap>(() => readPlaybackProgress());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -406,11 +418,22 @@ export default function App() {
       speed,
       seekStep,
       isSubtitleMaskEnabled,
+      shouldUnmaskOnPause,
       subtitleMask,
       maskShortcut,
+      studyNotesShortcut,
       isStudyOpen,
     });
-  }, [speed, seekStep, isSubtitleMaskEnabled, subtitleMask, maskShortcut, isStudyOpen]);
+  }, [
+    speed,
+    seekStep,
+    isSubtitleMaskEnabled,
+    shouldUnmaskOnPause,
+    subtitleMask,
+    maskShortcut,
+    studyNotesShortcut,
+    isStudyOpen,
+  ]);
 
   useEffect(() => {
     function onPopState() {
@@ -425,6 +448,7 @@ export default function App() {
     if (!selectedLessonId) {
       setLessonStatus("idle");
       setLessonError("");
+      setIsVideoPaused(true);
       mediaRef.current?.pause();
       return;
     }
@@ -437,6 +461,7 @@ export default function App() {
       setLessonStatus("loading");
       setLessonError("");
       setQuery("");
+      setIsVideoPaused(true);
 
       if (!selectedLesson || !selectedLesson.lessonPath) {
         if (activeLessonId === DEFAULT_LESSON_ID) {
@@ -535,6 +560,12 @@ export default function App() {
         return;
       }
 
+      if (isPlainKey && studyNotesShortcut && event.key.toLowerCase() === studyNotesShortcut.toLowerCase()) {
+        event.preventDefault();
+        setIsStudyOpen((value) => !value);
+        return;
+      }
+
       const media = mediaRef.current;
       if (!media) return;
 
@@ -569,7 +600,16 @@ export default function App() {
 
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [activeIndex, isSettingsOpen, lesson.chunks, lesson.media.duration, lesson.media.type, maskShortcut, seekStep]);
+  }, [
+    activeIndex,
+    isSettingsOpen,
+    lesson.chunks,
+    lesson.media.duration,
+    lesson.media.type,
+    maskShortcut,
+    seekStep,
+    studyNotesShortcut,
+  ]);
 
   function seekTo(chunk: LessonChunk, shouldPlay = true) {
     const media = mediaRef.current;
@@ -645,6 +685,20 @@ export default function App() {
   function changeMaskShortcut(event: ChangeEvent<HTMLInputElement>) {
     const value = event.target.value.trim().slice(-1).toUpperCase();
     setMaskShortcut(value);
+  }
+
+  function changeStudyNotesShortcut(event: ChangeEvent<HTMLInputElement>) {
+    const value = event.target.value.trim().slice(-1).toUpperCase();
+    setStudyNotesShortcut(value);
+  }
+
+  function handleVideoPlay() {
+    setIsVideoPaused(false);
+  }
+
+  function handleVideoPause() {
+    setIsVideoPaused(true);
+    saveCurrentPlaybackProgress(true);
   }
 
   function startMaskDrag(event: ReactPointerEvent<HTMLDivElement>, mode: MaskDragMode) {
@@ -854,6 +908,8 @@ export default function App() {
     );
   }
 
+  const isSubtitleMaskVisible = isSubtitleMaskEnabled && !(shouldUnmaskOnPause && isVideoPaused);
+
   return (
     <main className="app-shell">
       <section className={`lesson-stage${isStudyOpen ? "" : " study-collapsed"}`} aria-label="Media player">
@@ -932,12 +988,13 @@ export default function App() {
                 controls
                 src={lesson.media.path}
                 onTimeUpdate={onTimeUpdate}
-                onPause={() => saveCurrentPlaybackProgress(true)}
-                onEnded={() => saveCurrentPlaybackProgress(true)}
+                onPlay={handleVideoPlay}
+                onPause={handleVideoPause}
+                onEnded={handleVideoPause}
                 playsInline
               />
             )}
-            {lesson.media.type === "video" && isSubtitleMaskEnabled ? (
+            {lesson.media.type === "video" && isSubtitleMaskVisible ? (
               <div
                 className="subtitle-mask"
                 style={{
@@ -1115,11 +1172,33 @@ export default function App() {
                 aria-label="Subtitle mask shortcut"
               />
             </label>
+            <label className="setting-field">
+              <span>Study notes shortcut</span>
+              <input
+                maxLength={1}
+                value={studyNotesShortcut}
+                onChange={changeStudyNotesShortcut}
+                placeholder="N"
+                aria-label="Study notes shortcut"
+              />
+            </label>
+            <label className="setting-toggle">
+              <input
+                type="checkbox"
+                checked={shouldUnmaskOnPause}
+                onChange={(event) => setShouldUnmaskOnPause(event.target.checked)}
+              />
+              <span>Unmask subtitles while video is paused</span>
+            </label>
 
             <div className="shortcut-list" aria-label="Keyboard shortcuts">
               <div>
                 <kbd>{maskShortcut || "Unset"}</kbd>
                 <span>Show or hide subtitle mask</span>
+              </div>
+              <div>
+                <kbd>{studyNotesShortcut || "Unset"}</kbd>
+                <span>Open or collapse study notes</span>
               </div>
               <div>
                 <kbd>Space</kbd>
