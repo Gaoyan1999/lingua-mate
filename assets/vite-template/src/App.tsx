@@ -591,6 +591,9 @@ export default function App() {
     });
   }, [lesson.chunks, query]);
 
+  const audioProgressPercent =
+    lesson.media.duration > 0 ? clamp((currentTime / lesson.media.duration) * 100, 0, 100) : 0;
+  const audioMediaLabel = lesson.media.path.toLowerCase().endsWith(".mp3") ? "MP3 audio" : "Audio";
   const mediaFrameStyle = {
     "--media-aspect-ratio": String(mediaAspectRatio),
     ...(mediaFrameWidth ? { "--media-frame-width": `${Math.round(mediaFrameWidth)}px` } : {}),
@@ -874,17 +877,13 @@ export default function App() {
 
       event.preventDefault();
 
+      const direction = event.code === "ArrowRight" ? 1 : -1;
       if (event.metaKey) {
-        const direction = event.code === "ArrowRight" ? 1 : -1;
-        const nextIndex = Math.min(Math.max(activeIndex + direction, 0), lesson.chunks.length - 1);
-        seekTo(lesson.chunks[nextIndex], !media.paused);
+        seekToChunkOffset(direction, !media.paused);
         return;
       }
 
-      const delta = event.code === "ArrowRight" ? seekStep : -seekStep;
-      const nextTime = Math.min(Math.max(media.currentTime + delta, 0), media.duration || lesson.media.duration);
-      media.currentTime = nextTime;
-      setCurrentTime(nextTime);
+      seekBy(direction * seekStep);
     }
 
     window.addEventListener("keydown", onKeyDown, true);
@@ -899,6 +898,20 @@ export default function App() {
     seekStep,
     studyNotesShortcut,
   ]);
+
+  function seekBy(delta: number) {
+    const media = mediaRef.current;
+    if (!media) return;
+    const duration = media.duration || lesson.media.duration;
+    const nextTime = Math.min(Math.max(media.currentTime + delta, 0), duration);
+    media.currentTime = nextTime;
+    setCurrentTime(nextTime);
+  }
+
+  function seekToChunkOffset(offset: number, shouldPlay = true) {
+    const nextIndex = Math.min(Math.max(activeIndex + offset, 0), lesson.chunks.length - 1);
+    seekTo(lesson.chunks[nextIndex], shouldPlay);
+  }
 
   function seekTo(chunk: LessonChunk, shouldPlay = true) {
     const media = mediaRef.current;
@@ -1477,16 +1490,41 @@ export default function App() {
             ) : lessonStatus === "error" ? (
               <p className="media-message">{lessonError}</p>
             ) : lesson.media.type === "audio" ? (
-              <audio
-                key={lesson.media.path}
-                ref={mediaRef}
-                controls
-                src={lesson.media.path}
-                onLoadedMetadata={handleMediaMetadata}
-                onTimeUpdate={onTimeUpdate}
-                onPause={() => saveCurrentPlaybackProgress(true)}
-                onEnded={() => saveCurrentPlaybackProgress(true)}
-              />
+              <div className="audio-surface" tabIndex={0} aria-label={`${lesson.media.title} audio player`}>
+                <div className="audio-art" aria-hidden="true">
+                  <Headphones size={42} />
+                  <span className="audio-orbit one" />
+                  <span className="audio-orbit two" />
+                </div>
+                <div className="audio-details">
+                  <p className="eyebrow">{audioMediaLabel}</p>
+                  <h2>{lesson.media.title}</h2>
+                  <div className="audio-time" aria-label={`Audio position ${formatTime(currentTime)}`}>
+                    <span>{formatTime(currentTime)}</span>
+                    <span>{formatTime(lesson.media.duration)}</span>
+                  </div>
+                  <div className="audio-progress" aria-hidden="true">
+                    <span style={{ width: `${audioProgressPercent}%` }} />
+                  </div>
+                </div>
+                <audio
+                  key={lesson.media.path}
+                  ref={mediaRef}
+                  controls
+                  src={lesson.media.path}
+                  onLoadedMetadata={handleMediaMetadata}
+                  onTimeUpdate={onTimeUpdate}
+                  onPlay={() => setIsVideoPaused(false)}
+                  onPause={() => {
+                    setIsVideoPaused(true);
+                    saveCurrentPlaybackProgress(true);
+                  }}
+                  onEnded={() => {
+                    setIsVideoPaused(true);
+                    saveCurrentPlaybackProgress(true);
+                  }}
+                />
+              </div>
             ) : (
               <video
                 key={lesson.media.path}
