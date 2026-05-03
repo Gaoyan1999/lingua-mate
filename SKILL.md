@@ -30,10 +30,10 @@ Do not require cloud transcription or runtime AI calls from the generated webpag
 This skill should run as an automatic local pipeline. Given an English video or podcast, the agent should:
 
 1. Determine whether the source material is a local file or a concrete Bilibili video link.
-2. Ask the user for the learner's English level if it was not already provided. Prefer CEFR-style levels (`A1`, `A2`, `B1`, `B2`, `C1`, `C2`), but accept plain descriptions such as beginner, intermediate, advanced, IELTS/TOEFL level, or school grade.
+2. Ask the user for the learner's English level if it was not already provided. Keep the question simple: "What's your English level? You can answer beginner, intermediate, advanced, or tell me your test/school level." Also accept CEFR labels such as `A2`, `B1`, `B2`, or `C1` if the user provides them. Stop and wait for the user's answer before generating translations, `readThrough`, or `vocabulary`; do not infer a default level.
 3. If it is a Bilibili link, download it into a local folder named after the video.
 4. Extract and split the transcript locally.
-5. Create a lite translation subagent for English-to-Chinese chunk translation and learning notes. Tell it the learner level and require `readThrough` and `vocabulary` notes to match that level.
+5. Fill English-to-Chinese translations and learning notes with `scripts/fill_lesson_with_codex.py`, passing the confirmed learner level with `--learner-level`.
 6. Save the translated result as JSON in the generated material folder.
 7. Clean up intermediate generation files unless the user explicitly asks to keep them.
 
@@ -57,10 +57,11 @@ The resource folder should contain the original video or podcast file plus final
 
 ## Steps
 
-1. Ask for the learner's English level if not already known. Use it for study-note difficulty and density:
-   - `A1-A2` / beginner: explain common reductions, basic phrases, and high-frequency vocabulary in simple Chinese.
-   - `B1-B2` / intermediate: focus on natural connected speech, phrasal verbs, idioms, collocations, and implied meaning.
-   - `C1-C2` / advanced: avoid obvious vocabulary; focus on subtle register, cultural references, discourse markers, pronunciation reductions, and nuanced usage.
+1. Ask for the learner's English level if not already known, and wait for the user's answer before generation. Do not choose a default level. Use this simple question: "What's your English level? You can answer beginner, intermediate, advanced, or tell me your test/school level." Use the answer for study-note difficulty and density:
+   - beginner: explain common reductions, basic phrases, and high-frequency vocabulary in simple Chinese.
+   - intermediate: focus on natural connected speech, phrasal verbs, idioms, collocations, and implied meaning.
+   - advanced: avoid obvious vocabulary; focus on subtle register, cultural references, discourse markers, pronunciation reductions, and nuanced usage.
+   - If the user gives a CEFR label, map `A1-A2` to beginner, `B1-B2` to intermediate, and `C1-C2` to advanced.
 2. Create the generated material directory outside the reusable skill/template source, for example `/Users/daniel/tools/test-lingua-mate/materials/<resource-name>/`. Put or copy the original media file in that folder when practical, so the original material and generated JSON stay together.
 3. If the source is a Bilibili video link, download it first:
 
@@ -86,8 +87,15 @@ The resource folder should contain the original video or podcast file plus final
 
    This writes `/Users/daniel/tools/test-lingua-mate/materials/<media-name>/chunks.json` with `{ "timeStart", "timeEnd", "origin", "translated" }[]`. Leave `translated` empty for Codex/cc to fill with Chinese later.
 
-5. For translation work, create a focused subagent and assign it a lite model such as `gpt-5.4-mini`, because English-to-Chinese chunk translation is straightforward and benefits from parallel, low-cost batching. Ask the subagent to translate `chunks.json` into Chinese and preserve every chunk `id` or timestamp.
-6. Merge filled batches:
+5. Fill the draft lesson with Chinese translations plus level-matched `readThrough` and `vocabulary` notes. Pass the user's learner level explicitly:
+
+   ```bash
+   pnpm fill -- --draft /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.draft.json --out /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.json --learner-level intermediate
+   ```
+
+   This uses `scripts/fill_lesson_with_codex.py`, runs Codex in small batches with `gpt-5.4-mini` by default, writes progress after every batch, and resumes from `--out` if it already exists. Adjust `--batch-size`, `--model`, or `--limit` when useful. Use `--overwrite` only when intentionally regenerating completed chunks.
+
+6. If using manually filled `ai_batches/` instead of the `pnpm fill` path, merge filled batches:
 
    ```bash
    python3 scripts/merge_batches.py /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.draft.json /Users/daniel/tools/test-lingua-mate/materials/S10E01/ai_filled/*.json --out /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.json
@@ -102,10 +110,10 @@ The resource folder should contain the original video or podcast file plus final
 8. Enrich a specific finished lesson with connected-speech and vocabulary notes:
 
    ```bash
-   pnpm enrich -- --lesson /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.json
+   pnpm enrich -- --lesson /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.json --learner-level intermediate
    ```
 
-   This step is explicit and targeted. It only updates the named lesson file. Use `--overwrite` only when regenerating existing notes intentionally. Include the learner level in the prompt/instructions so connected-speech and vocabulary notes are selected for that level.
+   This step is explicit and targeted. It only updates the named lesson file. Use `--overwrite` only when regenerating existing notes intentionally. Pass the confirmed learner level so connected-speech and vocabulary notes are selected for that level.
 
 9. Keep generated Library files under the working folder's `materials/<slug>/`. Register each Library item in the working folder registry so the homepage can list multiple Library items:
 

@@ -130,10 +130,11 @@ def pending_chunks(lesson: dict[str, Any], overwrite: bool, limit: int | None) -
     return chunks[:limit] if limit is not None else chunks
 
 
-def build_prompt(batch: list[dict[str, Any]], lesson: dict[str, Any]) -> str:
+def build_prompt(batch: list[dict[str, Any]], lesson: dict[str, Any], learner_level: str) -> str:
     languages = lesson.get("languages", {})
     payload = {
         "languages": languages,
+        "learnerLevel": learner_level,
         "chunks": [
             {
                 "id": chunk["id"],
@@ -152,13 +153,20 @@ def build_prompt(batch: list[dict[str, Any]], lesson: dict[str, Any]) -> str:
         "For vocabulary, generate 0-3 concise comprehension notes per chunk: idioms, phrasal verbs, collocations, "
         "implied meaning, cultural references, or easily confused phrases. Do not provide plain dictionary translation.\n"
         "Each note must have original and explanation. original should be an exact short phrase from sourceText. "
-        "explanation should be concise Simplified Chinese. If there is no genuinely useful note, return an empty array.\n\n"
+        "explanation should be concise Simplified Chinese. Match note density and difficulty to the learner level. "
+        "If there is no genuinely useful note, return an empty array.\n\n"
         f"Input JSON:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
 
 
-def enrich_batch(batch: list[dict[str, Any]], lesson: dict[str, Any], model: str, cwd: Path) -> list[dict[str, Any]]:
-    prompt = build_prompt(batch, lesson)
+def enrich_batch(
+    batch: list[dict[str, Any]],
+    lesson: dict[str, Any],
+    learner_level: str,
+    model: str,
+    cwd: Path,
+) -> list[dict[str, Any]]:
+    prompt = build_prompt(batch, lesson, learner_level)
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
@@ -217,6 +225,11 @@ def apply_enrichments(lesson: dict[str, Any], enrichments: list[dict[str, Any]],
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Enrich one Lingua Mate lesson JSON with study notes.")
     parser.add_argument("--lesson", type=Path, required=True, help="Lesson JSON file to update.")
+    parser.add_argument(
+        "--learner-level",
+        required=True,
+        help="Required learner level, for example beginner, intermediate, advanced, IELTS 6.5, or B2.",
+    )
     parser.add_argument("--model", default="gpt-5.4-mini", help="Codex model used for note generation.")
     parser.add_argument("--batch-size", type=int, default=10, help="Chunks per Codex enrichment batch.")
     parser.add_argument("--limit", type=int, help="Enrich at most this many pending chunks.")
@@ -232,6 +245,8 @@ def main() -> int:
     lesson_path = args.lesson.expanduser().resolve()
     if not lesson_path.exists():
         raise SystemExit(f"Lesson file not found: {lesson_path}")
+    if not str(args.learner_level).strip():
+        raise SystemExit("--learner-level is required.")
     if args.batch_size < 1:
         raise SystemExit("--batch-size must be at least 1.")
     if args.limit is not None and args.limit < 1:
@@ -254,7 +269,7 @@ def main() -> int:
     for offset in range(0, len(pending), args.batch_size):
         batch = pending[offset : offset + args.batch_size]
         print(f"Enriching batch {offset // args.batch_size + 1}: {batch[0]['id']}-{batch[-1]['id']}")
-        enrichments = enrich_batch(batch, lesson, args.model, cwd)
+        enrichments = enrich_batch(batch, lesson, args.learner_level.strip(), args.model, cwd)
         total_updates += apply_enrichments(lesson, enrichments, overwrite=args.overwrite)
         write_json(lesson_path, lesson)
 
