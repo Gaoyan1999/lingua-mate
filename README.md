@@ -26,6 +26,18 @@ pnpm test
 pnpm build
 ```
 
+Download a concrete Bilibili video link into a local folder:
+
+```bash
+pnpm bilibili -- "https://www.bilibili.com/video/BV..."
+```
+
+For higher-quality videos, provide a Bilibili `SESSDATA` value when you have permission to use it:
+
+```bash
+pnpm bilibili -- "https://www.bilibili.com/video/BV..." --output-root materials --sessdata "$BILIBILI_SESSDATA"
+```
+
 Split a local video into translation-ready chunks:
 
 ```bash
