@@ -193,6 +193,33 @@ class ApplyChunksToTemplateTests(unittest.TestCase):
             data = json.loads(index_path.read_text(encoding="utf-8"))
             self.assertEqual(data["lessons"], [{"id": "one", "title": "New", "lessonPath": "/data/lessons/one.json"}])
 
+    def test_update_lesson_registry_seeds_from_existing_index(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            seed_path = temp_path / "lessons.json"
+            registry_path = temp_path / "registry.json"
+            seed_path.write_text(
+                json.dumps({"lessons": [{"id": "old", "title": "Old", "lessonPath": "/old.json"}]}),
+                encoding="utf-8",
+            )
+
+            apply_chunks_to_template.update_lesson_registry(
+                registry_path,
+                {"id": "new", "title": "New", "lessonPath": "/data/lessons/new.json"},
+                seed_path=seed_path,
+            )
+
+            data = json.loads(registry_path.read_text(encoding="utf-8"))
+            self.assertEqual([item["id"] for item in data["lessons"]], ["old", "new"])
+
+    def test_default_registry_path_uses_working_folder_root(self):
+        lesson_path = Path("/work/test-lingua-mate/materials/s10e01/lesson.json")
+
+        self.assertEqual(
+            apply_chunks_to_template.default_registry_path(lesson_path),
+            Path("/work/test-lingua-mate/registry.json"),
+        )
+
 
 class EnrichLessonTests(unittest.TestCase):
     def test_apply_enrichments_fills_missing_notes_and_preserves_existing(self):

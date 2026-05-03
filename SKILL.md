@@ -41,14 +41,16 @@ Do not stop after transcription unless the user explicitly asks for transcript-o
 
 ## Preferred Material Layout
 
-Prefer a single top-level `materials/` folder for user media and generated Library data. Each resource should have its own folder named after the source media, for example:
+Prefer a separate working folder for user media and generated Library data. For local testing in this checkout, use `/Users/daniel/tools/test-lingua-mate` as the working folder. Each resource should have its own folder named after the source media, and the working folder should have one registry file:
 
 ```text
-materials/
-  S10E01/
-    S10E01.mp4
-    chunks.json
-    lesson.json
+test-lingua-mate/
+  registry.json
+  materials/
+    S10E01/
+      S10E01.mp4
+      chunks.json
+      lesson.json
 ```
 
 The resource folder should contain the original video or podcast file plus final generated JSON. Use a stable resource name derived from the media filename, such as `S10E01` for `S10E01.mp4`. Avoid leaving intermediate transcription files in the final folder unless the user asks to keep them.
@@ -59,11 +61,11 @@ The resource folder should contain the original video or podcast file plus final
    - `A1-A2` / beginner: explain common reductions, basic phrases, and high-frequency vocabulary in simple Chinese.
    - `B1-B2` / intermediate: focus on natural connected speech, phrasal verbs, idioms, collocations, and implied meaning.
    - `C1-C2` / advanced: avoid obvious vocabulary; focus on subtle register, cultural references, discourse markers, pronunciation reductions, and nuanced usage.
-2. Create the generated material directory outside the reusable skill/template source, for example `materials/<resource-name>/`. Put or copy the original media file in that folder when practical, so the original material and generated JSON stay together.
+2. Create the generated material directory outside the reusable skill/template source, for example `/Users/daniel/tools/test-lingua-mate/materials/<resource-name>/`. Put or copy the original media file in that folder when practical, so the original material and generated JSON stay together.
 3. If the source is a Bilibili video link, download it first:
 
    ```bash
-   pnpm bilibili -- "https://www.bilibili.com/video/BV..." --output-root materials
+   pnpm bilibili -- "https://www.bilibili.com/video/BV..." --output-root /Users/daniel/tools/test-lingua-mate/materials
    ```
 
    The downloader supports concrete `/video/BV...` and `/video/av...` links. It rejects search, channel, list, and bangumi pages in v1. If the link has `?p=N`, that part is downloaded; otherwise page 1 is used. For higher-quality restricted videos, pass `--sessdata "$BILIBILI_SESSDATA"` or set the environment variable.
@@ -71,7 +73,7 @@ The resource folder should contain the original video or podcast file plus final
 4. Run media preparation:
 
    ```bash
-   python3 scripts/prepare_media.py materials/S10E01/S10E01.mp4 --out materials/S10E01 --source-language en --target-language Chinese
+   python3 scripts/prepare_media.py /Users/daniel/tools/test-lingua-mate/materials/S10E01/S10E01.mp4 --out /Users/daniel/tools/test-lingua-mate/materials/S10E01 --source-language en --target-language Chinese
    ```
 
    This extracts audio, runs local Whisper, detects pauses, and writes `lesson.draft.json` plus `ai_batches/*.json`.
@@ -79,39 +81,39 @@ The resource folder should contain the original video or podcast file plus final
    For a translation-ready chunk list only, run:
 
    ```bash
-   python3 scripts/split_transcription.py materials/S10E01/S10E01.mp4
+   python3 scripts/split_transcription.py /Users/daniel/tools/test-lingua-mate/materials/S10E01/S10E01.mp4
    ```
 
-   This writes `materials/<media-name>/chunks.json` with `{ "timeStart", "timeEnd", "origin", "translated" }[]`. Leave `translated` empty for Codex/cc to fill with Chinese later.
+   This writes `/Users/daniel/tools/test-lingua-mate/materials/<media-name>/chunks.json` with `{ "timeStart", "timeEnd", "origin", "translated" }[]`. Leave `translated` empty for Codex/cc to fill with Chinese later.
 
 5. For translation work, create a focused subagent and assign it a lite model such as `gpt-5.4-mini`, because English-to-Chinese chunk translation is straightforward and benefits from parallel, low-cost batching. Ask the subagent to translate `chunks.json` into Chinese and preserve every chunk `id` or timestamp.
 6. Merge filled batches:
 
    ```bash
-   python3 scripts/merge_batches.py materials/S10E01/lesson.draft.json materials/S10E01/ai_filled/*.json --out materials/S10E01/lesson.json
+   python3 scripts/merge_batches.py /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.draft.json /Users/daniel/tools/test-lingua-mate/materials/S10E01/ai_filled/*.json --out /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.json
    ```
 
 7. Validate:
 
    ```bash
-   python3 scripts/validate_lesson.py materials/S10E01/lesson.json
+   python3 scripts/validate_lesson.py /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.json
    ```
 
 8. Enrich a specific finished lesson with connected-speech and vocabulary notes:
 
    ```bash
-   pnpm enrich -- --lesson materials/S10E01/lesson.json
+   pnpm enrich -- --lesson /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.json
    ```
 
    This step is explicit and targeted. It only updates the named lesson file. Use `--overwrite` only when regenerating existing notes intentionally. Include the learner level in the prompt/instructions so connected-speech and vocabulary notes are selected for that level.
 
-9. Keep generated Library files under `materials/<slug>/`. Register each Library item with the Vite template so the homepage can list multiple Library items:
+9. Keep generated Library files under the working folder's `materials/<slug>/`. Register each Library item in the working folder registry so the homepage can list multiple Library items:
 
    ```bash
-   python3 scripts/apply_chunks_to_template.py --chunks materials/S10E01/chunks.json --media materials/S10E01/S10E01.mp4 --lesson-out materials/S10E01/lesson.json --lesson-id S10E01 --link-template
+   python3 scripts/apply_chunks_to_template.py --chunks /Users/daniel/tools/test-lingua-mate/materials/S10E01/chunks.json --media /Users/daniel/tools/test-lingua-mate/materials/S10E01/S10E01.mp4 --lesson-out /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.json --lesson-id S10E01 --registry /Users/daniel/tools/test-lingua-mate/registry.json --link-template
    ```
 
-   This updates `assets/vite-template/public/data/lessons.json`, links the Library item under `assets/vite-template/public/data/lessons/<lesson-id>.json`, and keeps `assets/vite-template/public/data/lesson.json` as the latest Library fallback. Copy or symlink media into `assets/vite-template/public/media/`. Keep media paths relative to the Vite public root, such as `/media/source.mp4`.
+   This updates `/Users/daniel/tools/test-lingua-mate/registry.json`, exposes it as `assets/vite-template/public/data/registry.json`, links the Library item under `assets/vite-template/public/data/lessons/<lesson-id>.json`, and keeps `assets/vite-template/public/data/lesson.json` as the latest Library fallback. `assets/vite-template/public/data/lessons.json` is only a compatibility link to the same registry. Copy or symlink media into `assets/vite-template/public/media/`. Keep media paths relative to the Vite public root, such as `/media/source.mp4`.
 10. After final JSON is validated and linked, delete intermediate files unless the user asked to keep them. Remove generated working folders/files such as `ai_batches/`, `ai_filled/`, `.lingua-mate-work/`, extracted `audio.wav`, Whisper scratch output, and Bilibili `.m4s` fragments. Keep the original media file, final `lesson.json`, `chunks.json` when useful for reruns, transcript exports explicitly requested by the user, and linked template data.
 11. Run the generated page:
 
@@ -140,7 +142,7 @@ The final `lesson.json` must have:
 - `original`
 - `explanation`
 
-The optional `lessons.json` Library index should be:
+The working-folder `registry.json` Library index should be:
 
 ```json
 {

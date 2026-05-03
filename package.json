@@ -8,10 +8,10 @@
     "build": "pnpm --dir assets/vite-template build",
     "split": "python3 scripts/split_transcription.py",
     "bilibili": "python3 scripts/download_bilibili.py",
-    "translate": "python3 scripts/translate_chunks_with_codex.py --chunks materials/s10e01/chunks.json",
+    "translate": "python3 scripts/translate_chunks_with_codex.py --chunks ../test-lingua-mate/materials/s10e01/chunks.json",
     "enrich": "python3 scripts/enrich_lesson_with_codex.py",
-    "apply:s10e01": "python3 scripts/apply_chunks_to_template.py --chunks materials/s10e01/chunks.json --media ./S10E01.mp4 --lesson-out materials/s10e01/lesson.json --lesson-id s10e01 --link-template",
-    "transcript:s10e01": "python3 scripts/generate_transcript.py --chunks materials/s10e01/chunks.json --prefix materials/s10e01/transcript",
+    "apply:s10e01": "python3 scripts/apply_chunks_to_template.py --chunks ../test-lingua-mate/materials/s10e01/chunks.json --media ./S10E01.mp4 --lesson-out ../test-lingua-mate/materials/s10e01/lesson.json --lesson-id s10e01 --registry ../test-lingua-mate/registry.json --link-template",
+    "transcript:s10e01": "python3 scripts/generate_transcript.py --chunks ../test-lingua-mate/materials/s10e01/chunks.json --prefix ../test-lingua-mate/materials/s10e01/transcript",
     "test": "python3 -m unittest discover -s tests",
     "template:install": "pnpm --dir assets/vite-template install"
   }

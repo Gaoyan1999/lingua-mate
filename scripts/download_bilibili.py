@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import re
@@ -86,6 +87,8 @@ class BilibiliClient:
         response = self.open(url, referer=referer)
         final_url = response.geturl()
         data = response.read()
+        if response.headers.get("Content-Encoding", "").lower() == "gzip":
+            data = gzip.decompress(data)
         if response_type == "bytes":
             return data, final_url
         text = data.decode("utf-8", errors="replace")
@@ -100,7 +103,7 @@ class BilibiliClient:
         return response
 
     def headers(self, *, referer: str = "") -> dict[str, str]:
-        headers = {"User-Agent": UA}
+        headers = {"User-Agent": UA, "Accept-Encoding": "identity"}
         cookie = self.cookie_header()
         if cookie:
             headers["Cookie"] = cookie
