@@ -31,6 +31,35 @@ class PrepareMediaTests(unittest.TestCase):
         self.assertEqual(chunks[0]["vocabulary"], [])
         self.assertEqual(chunks[1]["start"], 6.2)
 
+    def test_chunk_segments_caps_sentences_in_long_segment(self):
+        segments = [prepare_media.Segment(start=0.0, end=9.0, text="One. Two. Three.")]
+
+        chunks = prepare_media.chunk_segments(segments, max_sentences_per_chunk=2)
+
+        self.assertEqual([chunk["sourceText"] for chunk in chunks], ["One. Two.", "Three."])
+        self.assertLessEqual(chunks[0]["end"], chunks[1]["start"])
+
+    def test_chunk_segments_force_splits_inside_long_single_segment(self):
+        segments = [
+            prepare_media.Segment(
+                start=0.0,
+                end=25.0,
+                text="This is one long transcript segment without sentence punctuation and it should still split",
+            )
+        ]
+
+        chunks = prepare_media.chunk_segments(segments, max_chunk_duration=10.0)
+
+        self.assertEqual(len(chunks), 3)
+        self.assertTrue(all(chunk["end"] - chunk["start"] <= 10.001 for chunk in chunks))
+
+    def test_sentence_splitter_preserves_common_abbreviations(self):
+        self.assertEqual(
+            prepare_media.split_text_sentences("Mr. Smith leaves at 8 a.m. Sharp. Okay."),
+            ["Mr. Smith leaves at 8 a.m. Sharp.", "Okay."],
+        )
+        self.assertEqual(prepare_media.sentence_count("Mr. Smith leaves at 8 a.m. Sharp. Okay."), 2)
+
     def test_build_lesson_uses_media_type(self):
         lesson = prepare_media.build_lesson(
             ROOT / "sample.mp3",
