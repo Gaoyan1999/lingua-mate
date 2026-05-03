@@ -33,6 +33,18 @@ def require_number(value: Any, path: str, errors: list[str]) -> float | None:
     return float(value)
 
 
+def require_note_list(value: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(value, list):
+        errors.append(f"{path} must be an array.")
+        return
+
+    for note_index, raw_note in enumerate(value):
+        note_path = f"{path}[{note_index}]"
+        note = require_dict(raw_note, note_path, errors)
+        require_string(note.get("original"), f"{note_path}.original", errors)
+        require_string(note.get("explanation"), f"{note_path}.explanation", errors)
+
+
 def validate_lesson(data: Any, allow_draft: bool = False) -> list[str]:
     errors: list[str] = []
     lesson = require_dict(data, "$", errors)
@@ -81,19 +93,8 @@ def validate_lesson(data: Any, allow_draft: bool = False) -> list[str]:
 
         require_string(chunk.get("sourceText"), f"{path}.sourceText", errors)
         require_string(chunk.get("translation"), f"{path}.translation", errors, allow_empty=allow_draft)
-        require_string(chunk.get("readThrough"), f"{path}.readThrough", errors, allow_empty=allow_draft)
-
-        vocabulary = chunk.get("vocabulary")
-        if not isinstance(vocabulary, list):
-            errors.append(f"{path}.vocabulary must be an array.")
-            continue
-        for vocab_index, raw_vocab in enumerate(vocabulary):
-            vocab_path = f"{path}.vocabulary[{vocab_index}]"
-            vocab = require_dict(raw_vocab, vocab_path, errors)
-            require_string(vocab.get("term"), f"{vocab_path}.term", errors)
-            require_string(vocab.get("meaning"), f"{vocab_path}.meaning", errors)
-            require_string(vocab.get("nuance"), f"{vocab_path}.nuance", errors)
-            require_string(vocab.get("example"), f"{vocab_path}.example", errors)
+        require_note_list(chunk.get("readThrough"), f"{path}.readThrough", errors)
+        require_note_list(chunk.get("vocabulary"), f"{path}.vocabulary", errors)
 
     return errors
 
@@ -101,7 +102,7 @@ def validate_lesson(data: Any, allow_draft: bool = False) -> list[str]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate a Lingua Mate Library JSON file.")
     parser.add_argument("lesson", type=Path)
-    parser.add_argument("--allow-draft", action="store_true", help="Allow empty translation and readThrough fields.")
+    parser.add_argument("--allow-draft", action="store_true", help="Allow empty translation fields.")
     return parser.parse_args()
 
 

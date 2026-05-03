@@ -15,7 +15,7 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import type { Lesson, LessonChunk, LessonIndex, LessonIndexEntry, MediaType, VocabularyItem } from "./types";
+import type { Lesson, LessonChunk, LessonIndex, LessonIndexEntry, MediaType } from "./types";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 const INDEX_URL = "/data/lessons.json";
@@ -73,13 +73,16 @@ const DEFAULT_LESSON: Lesson = {
       end: 8,
       sourceText: "Generate or link a media JSON file to start studying.",
       translation: "生成或链接媒体 JSON 文件后即可开始学习。",
-      readThrough: "This placeholder keeps the reusable template buildable before local generated study material is linked.",
+      readThrough: [
+        {
+          original: "Generate or link",
+          explanation: "Generate or 的尾音会和 link 前面的辅音快速接上，听起来不像三个清晰分开的词。",
+        },
+      ],
       vocabulary: [
         {
-          term: "link",
-          meaning: "连接；在这里指把生成的 JSON 文件放到模板可读取的位置",
-          nuance: "In developer tooling, link often means symlink or connect one file path to another.",
-          example: "Link the generated media file before running the learner page.",
+          original: "link",
+          explanation: "这里不是网页链接，而是把生成的 JSON 或媒体文件连接到模板能读取的位置。",
         },
       ],
     },
@@ -322,15 +325,11 @@ export default function App() {
   const [isStudyOpen, setIsStudyOpen] = useState(initialPlayerConfig.isStudyOpen);
   const [playProgress, setPlayProgress] = useState<PlaybackProgressMap>(() => readPlaybackProgress());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [selectedTerm, setSelectedTerm] = useState<VocabularyItem | null>(
-    DEFAULT_LESSON.chunks[0]?.vocabulary[0] ?? null,
-  );
 
   const activeIndex = findActiveChunk(lesson.chunks, currentTime);
   const focusIndex = selectedIndex >= 0 ? selectedIndex : activeIndex;
   const activeChunk = lesson.chunks[activeIndex] ?? lesson.chunks[0];
   const focusChunk = lesson.chunks[focusIndex] ?? activeChunk;
-  const focusReadThrough = focusChunk.readThrough || "待生成中文讲解";
   const selectedLesson = useMemo(() => {
     if (!selectedLessonId) return null;
     return (
@@ -351,8 +350,9 @@ export default function App() {
     const needle = query.trim().toLowerCase();
     if (!needle) return lesson.chunks;
     return lesson.chunks.filter((chunk) => {
-      const vocab = chunk.vocabulary.map((item) => `${item.term} ${item.meaning}`).join(" ");
-      return `${chunk.sourceText} ${chunk.translation} ${chunk.readThrough} ${vocab}`.toLowerCase().includes(needle);
+      const readThrough = chunk.readThrough.map((item) => `${item.original} ${item.explanation}`).join(" ");
+      const vocab = chunk.vocabulary.map((item) => `${item.original} ${item.explanation}`).join(" ");
+      return `${chunk.sourceText} ${chunk.translation} ${readThrough} ${vocab}`.toLowerCase().includes(needle);
     });
   }, [lesson.chunks, query]);
 
@@ -445,7 +445,6 @@ export default function App() {
           setLesson(DEFAULT_LESSON);
           setCurrentTime(nextTime);
           setSelectedIndex(nextIndex);
-          setSelectedTerm(DEFAULT_LESSON.chunks[nextIndex]?.vocabulary[0] ?? null);
           setLessonStatus("ready");
           return;
         }
@@ -465,7 +464,6 @@ export default function App() {
           setLesson(nextLesson);
           setCurrentTime(nextTime);
           setSelectedIndex(nextIndex);
-          setSelectedTerm(nextLesson.chunks[nextIndex]?.vocabulary[0] ?? null);
           setLessonStatus("ready");
         }
       } catch (error) {
@@ -580,7 +578,6 @@ export default function App() {
     setCurrentTime(chunk.start);
     const nextIndex = lesson.chunks.findIndex((item) => item.id === chunk.id);
     setSelectedIndex(nextIndex >= 0 ? nextIndex : activeIndex);
-    setSelectedTerm(chunk.vocabulary[0] ?? null);
     if (shouldPlay) {
       void media.play();
     }
@@ -766,7 +763,6 @@ export default function App() {
     const nextActive = findActiveChunk(lesson.chunks, media.currentTime);
     if (nextActive !== selectedIndex) {
       setSelectedIndex(nextActive);
-      setSelectedTerm(lesson.chunks[nextActive]?.vocabulary[0] ?? null);
     }
   }
 
@@ -774,7 +770,6 @@ export default function App() {
     const chunk = lesson.chunks[index];
     if (!chunk) return;
     setSelectedIndex(index);
-    setSelectedTerm(chunk.vocabulary[0] ?? null);
     window.requestAnimationFrame(() => {
       chunkRefs.current[chunk.id]?.focus();
       scrollChunkIntoTranscript(index);
@@ -901,7 +896,6 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <div className="time-badge">{formatTime(currentTime)} / {formatTime(lesson.media.duration)}</div>
               <button
                 type="button"
                 className="panel-toggle"
@@ -1044,40 +1038,39 @@ export default function App() {
             <div className="readthrough">
               <div className="section-heading">
                 <Play size={18} />
-                <h2>Read-through</h2>
+                <h2>Connected speech</h2>
               </div>
-              <p>{focusReadThrough}</p>
+              <div className="note-list">
+                {focusChunk.readThrough.length > 0 ? (
+                  focusChunk.readThrough.map((item) => (
+                    <article className="note-card" key={`${item.original}-${item.explanation}`}>
+                      <h3>{item.original}</h3>
+                      <p>{item.explanation}</p>
+                    </article>
+                  ))
+                ) : (
+                  <span className="empty-note">No listening notes for this chunk.</span>
+                )}
+              </div>
             </div>
 
             <div className="vocabulary">
               <div className="section-heading">
                 <ListRestart size={18} />
-                <h2>Advanced words</h2>
+                <h2>Vocabulary notes</h2>
               </div>
-              <div className="term-list">
+              <div className="note-list">
                 {focusChunk.vocabulary.length > 0 ? (
                   focusChunk.vocabulary.map((item) => (
-                    <button
-                      type="button"
-                      className={selectedTerm?.term === item.term ? "term active" : "term"}
-                      key={item.term}
-                      onClick={() => setSelectedTerm(item)}
-                    >
-                      {item.term}
-                    </button>
+                    <article className="note-card" key={`${item.original}-${item.explanation}`}>
+                      <h3>{item.original}</h3>
+                      <p>{item.explanation}</p>
+                    </article>
                   ))
                 ) : (
                   <span className="empty-note">No vocabulary notes for this chunk.</span>
                 )}
               </div>
-              {selectedTerm ? (
-                <div className="term-detail">
-                  <h3>{selectedTerm.term}</h3>
-                  <p><strong>Meaning:</strong> {selectedTerm.meaning}</p>
-                  <p><strong>Nuance:</strong> {selectedTerm.nuance}</p>
-                  <p><strong>Example:</strong> {selectedTerm.example}</p>
-                </div>
-              ) : null}
             </div>
           </aside>
         ) : null}

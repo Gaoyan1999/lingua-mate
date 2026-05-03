@@ -38,6 +38,12 @@ Translate the configured material chunks:
 pnpm translate
 ```
 
+Generate connected-speech and vocabulary notes for one finished Library JSON:
+
+```bash
+pnpm enrich -- --lesson materials/s10e01/lesson.json
+```
+
 Apply translated S10E01 material to the Vite template:
 
 ```bash

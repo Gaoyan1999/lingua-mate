@@ -25,6 +25,23 @@ def extract_chunks(payload: Any, path: Path) -> list[dict[str, Any]]:
     return chunks
 
 
+def require_note_list(value: Any, field: str, chunk_id: str) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        raise SystemExit(f"Filled chunk {chunk_id} field {field} must be an array.")
+    notes: list[dict[str, str]] = []
+    for index, raw_note in enumerate(value):
+        if not isinstance(raw_note, dict):
+            raise SystemExit(f"Filled chunk {chunk_id} field {field}[{index}] must be an object.")
+        original = raw_note.get("original")
+        explanation = raw_note.get("explanation")
+        if not isinstance(original, str) or not original.strip():
+            raise SystemExit(f"Filled chunk {chunk_id} field {field}[{index}].original must be a non-empty string.")
+        if not isinstance(explanation, str) or not explanation.strip():
+            raise SystemExit(f"Filled chunk {chunk_id} field {field}[{index}].explanation must be a non-empty string.")
+        notes.append({"original": original.strip(), "explanation": explanation.strip()})
+    return notes
+
+
 def merge_batches(draft: dict[str, Any], batch_paths: list[Path]) -> dict[str, Any]:
     by_id: dict[str, dict[str, Any]] = {}
     for path in batch_paths:
@@ -47,7 +64,12 @@ def merge_batches(draft: dict[str, Any], batch_paths: list[Path]) -> dict[str, A
         for field in ("translation", "readThrough", "vocabulary"):
             if field not in filled:
                 raise SystemExit(f"Filled chunk {chunk_id} is missing {field}.")
-            chunk[field] = filled[field]
+        translation = filled["translation"]
+        if not isinstance(translation, str) or not translation.strip():
+            raise SystemExit(f"Filled chunk {chunk_id} field translation must be a non-empty string.")
+        chunk["translation"] = translation.strip()
+        chunk["readThrough"] = require_note_list(filled["readThrough"], "readThrough", str(chunk_id))
+        chunk["vocabulary"] = require_note_list(filled["vocabulary"], "vocabulary", str(chunk_id))
 
     if missing:
         raise SystemExit(f"Missing filled chunks: {', '.join(missing)}")

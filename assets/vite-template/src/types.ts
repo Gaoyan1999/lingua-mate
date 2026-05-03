@@ -1,10 +1,8 @@
 export type MediaType = "video" | "audio";
 
-export interface VocabularyItem {
-  term: string;
-  meaning: string;
-  nuance: string;
-  example: string;
+export interface StudyNote {
+  original: string;
+  explanation: string;
 }
 
 export interface LessonChunk {
@@ -13,8 +11,8 @@ export interface LessonChunk {
   end: number;
   sourceText: string;
   translation: string;
-  readThrough: string;
-  vocabulary: VocabularyItem[];
+  readThrough: StudyNote[];
+  vocabulary: StudyNote[];
 }
 
 export interface Lesson {
