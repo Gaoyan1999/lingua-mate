@@ -16,6 +16,7 @@ import generate_transcript
 import translate_chunks_with_codex
 import apply_chunks_to_template
 import enrich_lesson_with_codex
+import fill_lesson_with_codex
 import download_bilibili
 
 
@@ -251,6 +252,16 @@ class ApplyChunksToTemplateTests(unittest.TestCase):
 
 
 class EnrichLessonTests(unittest.TestCase):
+    def test_build_prompt_includes_learner_level(self):
+        prompt = enrich_lesson_with_codex.build_prompt(
+            [{"id": "chunk-0001", "sourceText": "He's gonna figure it out.", "translation": "他会想办法。"}],
+            {"languages": {"source": "English", "target": "Chinese"}},
+            "C1",
+        )
+
+        self.assertIn('"learnerLevel": "C1"', prompt)
+        self.assertIn("Match note density and difficulty to the learner level", prompt)
+
     def test_apply_enrichments_fills_missing_notes_and_preserves_existing(self):
         lesson = {
             "chunks": [
@@ -318,6 +329,70 @@ class EnrichLessonTests(unittest.TestCase):
         self.assertEqual(updated, 2)
         self.assertEqual(lesson["chunks"][0]["readThrough"][0]["original"], "new")
         self.assertEqual(lesson["chunks"][0]["vocabulary"][0]["original"], "new vocab")
+
+
+class FillLessonTests(unittest.TestCase):
+    def test_build_prompt_requires_learner_level_context(self):
+        prompt = fill_lesson_with_codex.build_prompt(
+            [{"id": "chunk-0001", "sourceText": "He's gonna figure it out."}],
+            "B2",
+        )
+
+        self.assertIn('"learnerLevel": "B2"', prompt)
+        self.assertIn("Match note density and difficulty to the learner level", prompt)
+        self.assertIn("He's gonna figure it out.", prompt)
+
+    def test_apply_filled_updates_translation_and_notes(self):
+        lesson = {
+            "chunks": [
+                {
+                    "id": "chunk-0001",
+                    "sourceText": "He's gonna figure it out.",
+                    "translation": "",
+                    "readThrough": [],
+                    "vocabulary": [],
+                }
+            ]
+        }
+
+        updated = fill_lesson_with_codex.apply_filled(
+            lesson,
+            [
+                {
+                    "id": "chunk-0001",
+                    "translation": "他会想办法弄明白。",
+                    "readThrough": [{"original": "He's gonna", "explanation": "口语里常读成很快的一组音。"}],
+                    "vocabulary": [{"original": "figure it out", "explanation": "靠思考或尝试解决问题。"}],
+                }
+            ],
+        )
+
+        self.assertEqual(updated, 1)
+        self.assertEqual(lesson["chunks"][0]["translation"], "他会想办法弄明白。")
+        self.assertEqual(lesson["chunks"][0]["readThrough"][0]["original"], "He's gonna")
+        self.assertEqual(lesson["chunks"][0]["vocabulary"][0]["original"], "figure it out")
+
+    def test_pending_chunks_respects_completed_chunks(self):
+        lesson = {
+            "chunks": [
+                {
+                    "id": "chunk-0001",
+                    "translation": "完成",
+                    "readThrough": [],
+                    "vocabulary": [],
+                },
+                {
+                    "id": "chunk-0002",
+                    "translation": "",
+                    "readThrough": [],
+                    "vocabulary": [],
+                },
+            ]
+        }
+
+        pending = fill_lesson_with_codex.pending_chunks(lesson, overwrite=False, limit=None)
+
+        self.assertEqual([chunk["id"] for chunk in pending], ["chunk-0002"])
 
 
 class DownloadBilibiliTests(unittest.TestCase):
