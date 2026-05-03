@@ -52,7 +52,7 @@ def build_lesson(chunks: list[dict[str, Any]], media_path: Path, public_media_pa
                 "end": round(float(chunk["timeEnd"]), 3),
                 "sourceText": str(chunk["origin"]).strip(),
                 "translation": str(chunk["translated"]).strip(),
-                "readThrough": "",
+                "readThrough": [],
                 "vocabulary": [],
             }
             for index, chunk in enumerate(chunks)

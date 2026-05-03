@@ -16,13 +16,16 @@
       "end": 4.8,
       "sourceText": "Hello everyone. Today we are going to talk about learning.",
       "translation": "大家好。今天我们要聊一聊学习。",
-      "readThrough": "这一句先问候听众，然后介绍今天的话题是 learning。",
+      "readThrough": [
+        {
+          "original": "Hello everyone",
+          "explanation": "Hello 的尾音和 everyone 的开头会自然连起来，开场白常读得很轻快。"
+        }
+      ],
       "vocabulary": [
         {
-          "term": "going to",
-          "meaning": "将要，打算",
-          "nuance": "常用于口语中表达计划或即将发生的事情。",
-          "example": "We are going to talk about learning."
+          "original": "going to",
+          "explanation": "这里表示接下来要做的事，口语里常弱化成 gonna。"
         }
       ]
     }

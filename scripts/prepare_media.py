@@ -212,7 +212,7 @@ def chunk_segments(
                 "end": round(end, 3),
                 "sourceText": normalize_text(" ".join(segment.text for segment in current)),
                 "translation": "",
-                "readThrough": "",
+                "readThrough": [],
                 "vocabulary": [],
             }
         )
@@ -244,8 +244,9 @@ def write_ai_batches(lesson: dict[str, Any], output_dir: Path, batch_size: int) 
         batch = {
             "instructions": (
                 "Fill translation, readThrough, and vocabulary for each chunk. "
-                "Preserve ids, timestamps, and sourceText exactly. Vocabulary items need "
-                "term, meaning, nuance, and example."
+                "Preserve ids, timestamps, and sourceText exactly. readThrough is an array "
+                "of connected-speech listening notes. vocabulary is an array of concise "
+                "comprehension notes. Each note needs original and explanation."
             ),
             "languages": lesson["languages"],
             "chunks": batch_chunks,

@@ -15,6 +15,7 @@ import split_transcription
 import generate_transcript
 import translate_chunks_with_codex
 import apply_chunks_to_template
+import enrich_lesson_with_codex
 
 
 class PrepareMediaTests(unittest.TestCase):
@@ -25,6 +26,8 @@ class PrepareMediaTests(unittest.TestCase):
         self.assertEqual(len(chunks), 2)
         self.assertEqual(chunks[0]["id"], "chunk-0001")
         self.assertIn("Hello everyone", chunks[0]["sourceText"])
+        self.assertEqual(chunks[0]["readThrough"], [])
+        self.assertEqual(chunks[0]["vocabulary"], [])
         self.assertEqual(chunks[1]["start"], 6.2)
 
     def test_build_lesson_uses_media_type(self):
@@ -48,7 +51,7 @@ class PrepareMediaTests(unittest.TestCase):
                     "end": 3.5,
                     "sourceText": "Hello there.",
                     "translation": "",
-                    "readThrough": "",
+                    "readThrough": [],
                     "vocabulary": [],
                 }
             ]
@@ -79,12 +82,28 @@ class ValidateLessonTests(unittest.TestCase):
         self.assertTrue(any("end must be greater" in error for error in errors))
         self.assertTrue(any("sourceText must not be empty" in error for error in errors))
 
-    def test_draft_allows_empty_translation_fields(self):
-        data = json.loads((ROOT / "tests" / "fixtures" / "lesson.invalid.json").read_text())
+    def test_draft_allows_empty_translation_field(self):
+        data = json.loads((ROOT / "tests" / "fixtures" / "lesson.valid.json").read_text())
+        data["chunks"][0]["translation"] = ""
         errors = validate_lesson.validate_lesson(data, allow_draft=True)
 
         self.assertFalse(any("translation must not be empty" in error for error in errors))
-        self.assertFalse(any("readThrough must not be empty" in error for error in errors))
+
+    def test_old_note_shapes_fail(self):
+        data = json.loads((ROOT / "tests" / "fixtures" / "lesson.valid.json").read_text())
+        data["chunks"][0]["readThrough"] = "old read-through"
+        data["chunks"][0]["vocabulary"] = [
+            {
+                "term": "going to",
+                "meaning": "将要",
+                "nuance": "口语表达",
+                "example": "We are going to talk.",
+            }
+        ]
+        errors = validate_lesson.validate_lesson(data, allow_draft=True)
+
+        self.assertTrue(any("$.chunks[0].readThrough must be an array" in error for error in errors))
+        self.assertTrue(any("$.chunks[0].vocabulary[0].original must be a string" in error for error in errors))
 
 
 class MergeBatchTests(unittest.TestCase):
@@ -97,7 +116,7 @@ class MergeBatchTests(unittest.TestCase):
                     "end": 1,
                     "sourceText": "Hola.",
                     "translation": "",
-                    "readThrough": "",
+                    "readThrough": [],
                     "vocabulary": [],
                 }
             ]
@@ -107,13 +126,16 @@ class MergeBatchTests(unittest.TestCase):
                 {
                     "id": "chunk-0001",
                     "translation": "Hello.",
-                    "readThrough": "A greeting.",
+                    "readThrough": [
+                        {
+                            "original": "Hola",
+                            "explanation": "结尾元音在快语速里很短，容易被听轻。",
+                        }
+                    ],
                     "vocabulary": [
                         {
-                            "term": "Hola",
-                            "meaning": "Hello",
-                            "nuance": "Common greeting.",
-                            "example": "Hola, Maria.",
+                            "original": "Hola",
+                            "explanation": "常见问候语，相当于 hello。",
                         }
                     ],
                 }
@@ -126,7 +148,8 @@ class MergeBatchTests(unittest.TestCase):
             merged = merge_batches.merge_batches(draft, [batch_path])
 
         self.assertEqual(merged["chunks"][0]["translation"], "Hello.")
-        self.assertEqual(merged["chunks"][0]["vocabulary"][0]["term"], "Hola")
+        self.assertEqual(merged["chunks"][0]["readThrough"][0]["original"], "Hola")
+        self.assertEqual(merged["chunks"][0]["vocabulary"][0]["original"], "Hola")
 
 
 class GenerateTranscriptTests(unittest.TestCase):
@@ -168,6 +191,76 @@ class ApplyChunksToTemplateTests(unittest.TestCase):
 
             data = json.loads(index_path.read_text(encoding="utf-8"))
             self.assertEqual(data["lessons"], [{"id": "one", "title": "New", "lessonPath": "/data/lessons/one.json"}])
+
+
+class EnrichLessonTests(unittest.TestCase):
+    def test_apply_enrichments_fills_missing_notes_and_preserves_existing(self):
+        lesson = {
+            "chunks": [
+                {
+                    "id": "chunk-0001",
+                    "sourceText": "He's gonna have to figure it out.",
+                    "translation": "他得自己想办法弄明白。",
+                    "readThrough": [
+                        {
+                            "original": "He's gonna",
+                            "explanation": "已有人工笔记应被保留。",
+                        }
+                    ],
+                    "vocabulary": [],
+                }
+            ]
+        }
+        updated = enrich_lesson_with_codex.apply_enrichments(
+            lesson,
+            [
+                {
+                    "id": "chunk-0001",
+                    "readThrough": [
+                        {
+                            "original": "have to",
+                            "explanation": "模型返回的新连读笔记不应覆盖已有内容。",
+                        }
+                    ],
+                    "vocabulary": [
+                        {
+                            "original": "figure it out",
+                            "explanation": "靠思考或尝试把问题解决、弄懂。",
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self.assertEqual(updated, 1)
+        self.assertEqual(lesson["chunks"][0]["readThrough"][0]["original"], "He's gonna")
+        self.assertEqual(lesson["chunks"][0]["vocabulary"][0]["original"], "figure it out")
+
+    def test_apply_enrichments_overwrite_replaces_notes(self):
+        lesson = {
+            "chunks": [
+                {
+                    "id": "chunk-0001",
+                    "readThrough": [{"original": "old", "explanation": "旧笔记"}],
+                    "vocabulary": [{"original": "old vocab", "explanation": "旧词汇"}],
+                }
+            ]
+        }
+        updated = enrich_lesson_with_codex.apply_enrichments(
+            lesson,
+            [
+                {
+                    "id": "chunk-0001",
+                    "readThrough": [{"original": "new", "explanation": "新笔记"}],
+                    "vocabulary": [{"original": "new vocab", "explanation": "新词汇"}],
+                }
+            ],
+            overwrite=True,
+        )
+
+        self.assertEqual(updated, 2)
+        self.assertEqual(lesson["chunks"][0]["readThrough"][0]["original"], "new")
+        self.assertEqual(lesson["chunks"][0]["vocabulary"][0]["original"], "new vocab")
 
 
 if __name__ == "__main__":

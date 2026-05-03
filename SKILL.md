@@ -65,7 +65,7 @@ The resource folder should contain the original video or podcast file plus gener
 
    This writes `materials/<media-name>/chunks.json` with `{ "timeStart", "timeEnd", "origin", "translated" }[]`. Leave `translated` empty for Codex/cc to fill with Chinese later.
 
-3. For translation work, create a focused subagent and assign it a lite model such as `gpt-5.4-mini`, because English-to-Chinese chunk translation is straightforward and benefits from parallel, low-cost batching. Ask the subagent to translate `chunks.json` into Chinese, preserve every chunk `id` or timestamp, and add `translation`, `readThrough`, and `vocabulary` when building `lesson.json`.
+3. For translation work, create a focused subagent and assign it a lite model such as `gpt-5.4-mini`, because English-to-Chinese chunk translation is straightforward and benefits from parallel, low-cost batching. Ask the subagent to translate `chunks.json` into Chinese and preserve every chunk `id` or timestamp.
 4. Merge filled batches:
 
    ```bash
@@ -78,14 +78,22 @@ The resource folder should contain the original video or podcast file plus gener
    python3 scripts/validate_lesson.py materials/S10E01/lesson.json
    ```
 
-6. Keep generated Library files under `materials/<slug>/`. Register each Library item with the Vite template so the homepage can list multiple Library items:
+6. Enrich a specific finished lesson with connected-speech and vocabulary notes:
+
+   ```bash
+   pnpm enrich -- --lesson materials/S10E01/lesson.json
+   ```
+
+   This step is explicit and targeted. It only updates the named lesson file. Use `--overwrite` only when regenerating existing notes intentionally.
+
+7. Keep generated Library files under `materials/<slug>/`. Register each Library item with the Vite template so the homepage can list multiple Library items:
 
    ```bash
    python3 scripts/apply_chunks_to_template.py --chunks materials/S10E01/chunks.json --media materials/S10E01/S10E01.mp4 --lesson-out materials/S10E01/lesson.json --lesson-id S10E01 --link-template
    ```
 
    This updates `assets/vite-template/public/data/lessons.json`, links the Library item under `assets/vite-template/public/data/lessons/<lesson-id>.json`, and keeps `assets/vite-template/public/data/lesson.json` as the latest Library fallback. Copy or symlink media into `assets/vite-template/public/media/`. Keep media paths relative to the Vite public root, such as `/media/source.mp4`.
-7. Run the generated page:
+8. Run the generated page:
 
    ```bash
    pnpm install
@@ -102,12 +110,15 @@ The final `lesson.json` must have:
 - `languages`: `{ "source": string, "target": string }`
 - `chunks`: ordered items with `id`, `start`, `end`, `sourceText`, `translation`, `readThrough`, and `vocabulary`
 
-Each vocabulary item should explain one English word or phrase for a Chinese-speaking learner:
+`readThrough` is an array of connected-speech listening notes:
 
-- `term`
-- `meaning`
-- `nuance`
-- `example`
+- `original`
+- `explanation`
+
+`vocabulary` is an array of concise comprehension notes:
+
+- `original`
+- `explanation`
 
 The optional `lessons.json` Library index should be:
 
@@ -130,9 +141,9 @@ The optional `lessons.json` Library index should be:
 ## Content Guidance
 
 - Keep translations natural rather than word-for-word when needed.
-- Use `readThrough` to explain what the source chunk means in context.
+- Use `readThrough` for listening issues: reductions, linking, weak forms, dropped sounds, stress, contractions, or fast-speech phrasing.
 - Choose vocabulary that helps comprehension: idioms, collocations, grammar patterns, advanced words, cultural references, or easily confused phrases.
-- Keep vocabulary concise. Prefer 1-5 entries per chunk.
+- Keep notes concise and selective. Prefer 0-3 useful entries per section per chunk, with no filler.
 - If source and target language are the same, still provide read-through and vocabulary notes.
 
 ## Quality Checks
