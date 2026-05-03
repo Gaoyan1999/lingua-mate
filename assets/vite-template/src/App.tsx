@@ -12,6 +12,7 @@ import {
 import {
   ArrowLeft,
   Clock,
+  Download,
   EyeOff,
   Film,
   Gauge,
@@ -23,6 +24,9 @@ import {
   Play,
   Search,
   Settings,
+  Star,
+  Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import type { Lesson, LessonChunk, LessonIndex, LessonIndexEntry, MediaType } from "./types";
@@ -38,6 +42,9 @@ const MIN_MASK_HEIGHT = 5;
 const MIN_MASK_WIDTH = 8;
 const PLAYER_CONFIG_STORAGE_KEY = "lingua-mate:player-config:v1";
 const PLAY_PROGRESS_STORAGE_KEY = "lingua-mate:play-progress:v1";
+const STAR_COLLECTION_STORAGE_KEY = "lingua-mate:stars:v1";
+const STAR_COLLECTION_SCHEMA_VERSION = 1;
+const STAR_COLLECTION_APP = "lingua-mate";
 const PROGRESS_SAVE_SECONDS = 2;
 const PROGRESS_SAVE_MS = 5000;
 const MAX_STORED_PROGRESS_ITEMS = 100;
@@ -59,6 +66,45 @@ type PlaybackProgress = {
   updatedAt: number;
 };
 type PlaybackProgressMap = Record<string, PlaybackProgress>;
+type StarItemType = "sentence" | "connectedSpeech" | "vocabulary";
+type StarLessonInfo = {
+  id: string;
+  title: string;
+  fingerprint: string;
+};
+type SentenceStarItem = {
+  id: string;
+  type: "sentence";
+  chunkId: string;
+  snapshot: {
+    sourceText: string;
+    translation: string;
+    start: number;
+    end: number;
+  };
+};
+type NoteStarItem = {
+  id: string;
+  type: "connectedSpeech" | "vocabulary";
+  chunkId: string;
+  noteIndex: number;
+  snapshot: {
+    original: string;
+    explanation: string;
+    chunkSourceText: string;
+    start: number;
+    end: number;
+  };
+};
+type StarItem = SentenceStarItem | NoteStarItem;
+type StarCollection = {
+  schemaVersion: 1;
+  app: typeof STAR_COLLECTION_APP;
+  lesson: StarLessonInfo;
+  items: StarItem[];
+};
+type StarCollectionMap = Record<string, StarCollection>;
+type StudyPanelMode = "notes" | "stars";
 type MaskDragMode = "move" | "nw" | "ne" | "sw" | "se";
 type MaskDragState = {
   mode: MaskDragMode;
@@ -156,6 +202,120 @@ function writeStorageValue(key: string, value: unknown) {
   } catch {
     // Storage may be disabled or full. The app should still work without persistence.
   }
+}
+
+function hashString(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function computeLessonFingerprint(lesson: Lesson): string {
+  return `lm1:${hashString(
+    JSON.stringify({
+      media: lesson.media,
+      languages: lesson.languages,
+      chunks: lesson.chunks.map((chunk) => ({
+        id: chunk.id,
+        start: chunk.start,
+        end: chunk.end,
+        sourceText: chunk.sourceText,
+        translation: chunk.translation,
+        readThrough: chunk.readThrough,
+        vocabulary: chunk.vocabulary,
+      })),
+    }),
+  )}`;
+}
+
+function createEmptyStarCollection(lesson: StarLessonInfo): StarCollection {
+  return {
+    schemaVersion: STAR_COLLECTION_SCHEMA_VERSION,
+    app: STAR_COLLECTION_APP,
+    lesson,
+    items: [],
+  };
+}
+
+function normalizeStarLessonInfo(value: unknown): StarLessonInfo | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || !value.id.trim()) return null;
+  if (typeof value.title !== "string" || !value.title.trim()) return null;
+  if (typeof value.fingerprint !== "string" || !value.fingerprint.trim()) return null;
+  return {
+    id: value.id.trim(),
+    title: value.title.trim(),
+    fingerprint: value.fingerprint.trim(),
+  };
+}
+
+function normalizeStarItem(value: unknown): StarItem | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || typeof value.chunkId !== "string") return null;
+  if (value.type !== "sentence" && value.type !== "connectedSpeech" && value.type !== "vocabulary") return null;
+  if (!isRecord(value.snapshot)) return null;
+
+  if (value.type === "sentence") {
+    const { sourceText, translation, start, end } = value.snapshot;
+    if (typeof sourceText !== "string" || typeof translation !== "string") return null;
+    if (typeof start !== "number" || typeof end !== "number") return null;
+    return {
+      id: value.id,
+      type: "sentence",
+      chunkId: value.chunkId,
+      snapshot: { sourceText, translation, start, end },
+    };
+  }
+
+  const { original, explanation, chunkSourceText, start, end } = value.snapshot;
+  if (typeof value.noteIndex !== "number" || !Number.isInteger(value.noteIndex) || value.noteIndex < 0) return null;
+  if (typeof original !== "string" || typeof explanation !== "string" || typeof chunkSourceText !== "string") return null;
+  if (typeof start !== "number" || typeof end !== "number") return null;
+  return {
+    id: value.id,
+    type: value.type,
+    chunkId: value.chunkId,
+    noteIndex: value.noteIndex,
+    snapshot: { original, explanation, chunkSourceText, start, end },
+  };
+}
+
+function normalizeStarCollection(value: unknown): StarCollection | null {
+  if (!isRecord(value)) return null;
+  if (value.schemaVersion !== STAR_COLLECTION_SCHEMA_VERSION || value.app !== STAR_COLLECTION_APP) return null;
+  const lesson = normalizeStarLessonInfo(value.lesson);
+  if (!lesson || !Array.isArray(value.items)) return null;
+
+  const uniqueItems = new Map<string, StarItem>();
+  value.items.forEach((item) => {
+    const normalized = normalizeStarItem(item);
+    if (normalized) {
+      uniqueItems.set(normalized.id, normalized);
+    }
+  });
+
+  return {
+    schemaVersion: STAR_COLLECTION_SCHEMA_VERSION,
+    app: STAR_COLLECTION_APP,
+    lesson,
+    items: Array.from(uniqueItems.values()),
+  };
+}
+
+function readStarCollections(): StarCollectionMap {
+  const stored = readStorageValue(STAR_COLLECTION_STORAGE_KEY);
+  if (!isRecord(stored)) return {};
+
+  return Object.fromEntries(
+    Object.entries(stored).flatMap(([lessonId, value]) => {
+      const collection = normalizeStarCollection(value);
+      if (!collection || collection.lesson.id !== lessonId) return [];
+      return [[lessonId, collection]];
+    }),
+  );
 }
 
 function normalizeShortcut(value: unknown, fallback: string): string {
@@ -326,7 +486,8 @@ export default function App() {
   const mediaFrameRef = useRef<HTMLDivElement | null>(null);
   const titleRowRef = useRef<HTMLDivElement | null>(null);
   const lyricsListRef = useRef<HTMLDivElement | null>(null);
-  const chunkRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const starImportRef = useRef<HTMLInputElement | null>(null);
+  const chunkRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const maskDragRef = useRef<MaskDragState | null>(null);
   const lastProgressSaveRef = useRef({ lessonId: "", time: 0, savedAt: 0 });
   const [initialPlayerConfig] = useState<PlayerConfig>(() => readPlayerConfig());
@@ -350,6 +511,9 @@ export default function App() {
   const [isStudyOpen, setIsStudyOpen] = useState(initialPlayerConfig.isStudyOpen);
   const [isVideoPaused, setIsVideoPaused] = useState(true);
   const [playProgress, setPlayProgress] = useState<PlaybackProgressMap>(() => readPlaybackProgress());
+  const [starCollections, setStarCollections] = useState<StarCollectionMap>(() => readStarCollections());
+  const [studyPanelMode, setStudyPanelMode] = useState<StudyPanelMode>("notes");
+  const [starImportError, setStarImportError] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [mediaAspectRatio, setMediaAspectRatio] = useState(DEFAULT_MEDIA_ASPECT_RATIO);
   const [mediaFrameWidth, setMediaFrameWidth] = useState<number | null>(null);
@@ -365,6 +529,40 @@ export default function App() {
       (selectedLessonId.startsWith("/") ? { id: selectedLessonId, title: selectedLessonId, lessonPath: selectedLessonId } : null)
     );
   }, [catalog, selectedLessonId]);
+  const starLessonInfo = useMemo<StarLessonInfo | null>(() => {
+    if (!selectedLessonId || lessonStatus !== "ready") return null;
+    return {
+      id: selectedLessonId,
+      title: lesson.media.title,
+      fingerprint: computeLessonFingerprint(lesson),
+    };
+  }, [lesson, lessonStatus, selectedLessonId]);
+  const currentStarCollection = useMemo<StarCollection | null>(() => {
+    if (!starLessonInfo) return null;
+    const stored = starCollections[starLessonInfo.id];
+    if (
+      stored &&
+      stored.lesson.title === starLessonInfo.title &&
+      stored.lesson.fingerprint === starLessonInfo.fingerprint
+    ) {
+      return stored;
+    }
+    return createEmptyStarCollection(starLessonInfo);
+  }, [starCollections, starLessonInfo]);
+  const starredIds = useMemo(() => new Set(currentStarCollection?.items.map((item) => item.id) ?? []), [currentStarCollection]);
+  const sentenceStars = useMemo(
+    () => currentStarCollection?.items.filter((item): item is SentenceStarItem => item.type === "sentence") ?? [],
+    [currentStarCollection],
+  );
+  const connectedSpeechStars = useMemo(
+    () => currentStarCollection?.items.filter((item): item is NoteStarItem => item.type === "connectedSpeech") ?? [],
+    [currentStarCollection],
+  );
+  const vocabularyStars = useMemo(
+    () => currentStarCollection?.items.filter((item): item is NoteStarItem => item.type === "vocabulary") ?? [],
+    [currentStarCollection],
+  );
+  const starCount = currentStarCollection?.items.length ?? 0;
 
   const filteredLessons = useMemo(() => {
     const needle = libraryQuery.trim().toLowerCase();
@@ -457,6 +655,19 @@ export default function App() {
     studyNotesShortcut,
     isStudyOpen,
   ]);
+
+  useEffect(() => {
+    if (!starLessonInfo) return;
+    const stored = starCollections[starLessonInfo.id];
+    if (!stored || stored.lesson.fingerprint === starLessonInfo.fingerprint) return;
+
+    setStarCollections((current) => {
+      const next = { ...current };
+      delete next[starLessonInfo.id];
+      writeStorageValue(STAR_COLLECTION_STORAGE_KEY, next);
+      return next;
+    });
+  }, [starCollections, starLessonInfo]);
 
   useEffect(() => {
     function onPopState() {
@@ -720,6 +931,144 @@ export default function App() {
     scrollChunkIntoTranscript(activeIndex);
   }
 
+  function setCurrentStarCollection(collection: StarCollection) {
+    setStarCollections((current) => {
+      const next = {
+        ...current,
+        [collection.lesson.id]: collection,
+      };
+      writeStorageValue(STAR_COLLECTION_STORAGE_KEY, next);
+      return next;
+    });
+  }
+
+  function updateCurrentStarCollection(updater: (collection: StarCollection) => StarCollection) {
+    if (!starLessonInfo) return;
+    const base = currentStarCollection ?? createEmptyStarCollection(starLessonInfo);
+    setCurrentStarCollection(updater(base));
+  }
+
+  function sentenceStarId(chunkId: string): string {
+    return `sentence:${chunkId}`;
+  }
+
+  function noteStarId(type: Exclude<StarItemType, "sentence">, chunkId: string, noteIndex: number): string {
+    return `${type}:${chunkId}:${noteIndex}`;
+  }
+
+  function buildSentenceStarItem(chunk: LessonChunk): SentenceStarItem {
+    return {
+      id: sentenceStarId(chunk.id),
+      type: "sentence",
+      chunkId: chunk.id,
+      snapshot: {
+        sourceText: chunk.sourceText,
+        translation: chunk.translation,
+        start: chunk.start,
+        end: chunk.end,
+      },
+    };
+  }
+
+  function buildNoteStarItem(
+    type: Exclude<StarItemType, "sentence">,
+    chunk: LessonChunk,
+    noteIndex: number,
+  ): NoteStarItem {
+    const note = type === "connectedSpeech" ? chunk.readThrough[noteIndex] : chunk.vocabulary[noteIndex];
+    return {
+      id: noteStarId(type, chunk.id, noteIndex),
+      type,
+      chunkId: chunk.id,
+      noteIndex,
+      snapshot: {
+        original: note.original,
+        explanation: note.explanation,
+        chunkSourceText: chunk.sourceText,
+        start: chunk.start,
+        end: chunk.end,
+      },
+    };
+  }
+
+  function toggleStar(item: StarItem) {
+    updateCurrentStarCollection((collection) => {
+      const isStarred = collection.items.some((star) => star.id === item.id);
+      return {
+        ...collection,
+        items: isStarred ? collection.items.filter((star) => star.id !== item.id) : [...collection.items, item],
+      };
+    });
+    setStarImportError("");
+  }
+
+  function removeStar(starId: string) {
+    updateCurrentStarCollection((collection) => ({
+      ...collection,
+      items: collection.items.filter((item) => item.id !== starId),
+    }));
+    setStarImportError("");
+  }
+
+  function jumpToStar(item: StarItem) {
+    const chunk = lesson.chunks.find((candidate) => candidate.id === item.chunkId);
+    if (!chunk) return;
+    setStudyPanelMode("stars");
+    setIsStudyOpen(true);
+    seekTo(chunk);
+    window.requestAnimationFrame(() => scrollChunkIntoTranscript(lesson.chunks.findIndex((candidate) => candidate.id === chunk.id)));
+  }
+
+  function exportStars() {
+    if (!currentStarCollection || !selectedLessonId) return;
+    const payload: StarCollection = {
+      ...currentStarCollection,
+      items: currentStarCollection.items,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2) + "\n"], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${slugify(selectedLessonId, "lesson")}-stars.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setStarImportError("");
+  }
+
+  async function importStars(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !starLessonInfo) return;
+
+    try {
+      const collection = normalizeStarCollection(JSON.parse(await file.text()));
+      if (!collection) {
+        setStarImportError("The selected file is not a valid Lingua Mate stars JSON file.");
+        return;
+      }
+      if (collection.lesson.id !== starLessonInfo.id) {
+        setStarImportError("This stars file belongs to a different lesson.");
+        return;
+      }
+      if (collection.lesson.fingerprint !== starLessonInfo.fingerprint) {
+        setStarImportError("This lesson appears to have been regenerated, so the old stars were dropped.");
+        return;
+      }
+
+      setCurrentStarCollection({
+        ...collection,
+        lesson: starLessonInfo,
+      });
+      setStudyPanelMode("stars");
+      setIsStudyOpen(true);
+      setStarImportError("");
+    } catch {
+      setStarImportError("The selected stars file could not be read.");
+    }
+  }
+
   function openLesson(entry: LessonIndexEntry) {
     const nextUrl = new URL(window.location.href);
     nextUrl.searchParams.set("library", entry.id);
@@ -906,7 +1255,7 @@ export default function App() {
     });
   }
 
-  function onLyricsKeyDown(event: KeyboardEvent<HTMLDivElement>, chunk: LessonChunk) {
+  function onLyricsKeyDown(event: KeyboardEvent<HTMLElement>, chunk: LessonChunk) {
     if (event.key === "Enter") {
       seekTo(chunk);
       return;
@@ -920,6 +1269,52 @@ export default function App() {
       const nextIndex = Math.min(Math.max(index + direction, 0), lesson.chunks.length - 1);
       focusTranscriptRow(nextIndex);
     }
+  }
+
+  function renderStarSection(title: string, items: StarItem[], emptyText: string) {
+    return (
+      <section className="star-section" aria-label={title}>
+        <div className="section-heading">
+          <Star size={18} />
+          <h2>{title}</h2>
+        </div>
+        <div className="star-list">
+          {items.length > 0 ? (
+            items.map((item) => (
+              <article className="star-card" key={item.id}>
+                <button type="button" className="star-card-main" onClick={() => jumpToStar(item)}>
+                  <span className="chunk-time">
+                    {formatTime(item.snapshot.start)}-{formatTime(item.snapshot.end)}
+                  </span>
+                  {item.type === "sentence" ? (
+                    <span className="lyric-text">
+                      <strong>{item.snapshot.sourceText}</strong>
+                      <span>{item.snapshot.translation || "待翻译"}</span>
+                    </span>
+                  ) : (
+                    <span className="lyric-text">
+                      <strong>{item.snapshot.original}</strong>
+                      <span>{item.snapshot.explanation}</span>
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="star-button danger"
+                  onClick={() => removeStar(item.id)}
+                  aria-label="Remove starred item"
+                  title="Remove starred item"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </article>
+            ))
+          ) : (
+            <span className="empty-note">{emptyText}</span>
+          )}
+        </div>
+      </section>
+    );
   }
 
   if (!selectedLessonId) {
@@ -1020,6 +1415,20 @@ export default function App() {
               >
                 <Settings size={18} />
               </button>
+              <button
+                type="button"
+                className={`panel-toggle${studyPanelMode === "stars" && isStudyOpen ? " active" : ""}`}
+                onClick={() => {
+                  setStudyPanelMode("stars");
+                  setIsStudyOpen(true);
+                }}
+                aria-expanded={isStudyOpen && studyPanelMode === "stars"}
+                aria-controls="study-notes"
+                title="Show starred items"
+              >
+                <Star size={18} />
+                <span>Stars {starCount}</span>
+              </button>
               <label className="speed-control">
                 <Gauge size={18} />
                 <select value={speed} onChange={changeSpeed} aria-label="Playback speed">
@@ -1031,8 +1440,15 @@ export default function App() {
               <button
                 type="button"
                 className="panel-toggle"
-                onClick={() => setIsStudyOpen((value) => !value)}
-                aria-expanded={isStudyOpen}
+                onClick={() => {
+                  if (isStudyOpen && studyPanelMode === "notes") {
+                    setIsStudyOpen(false);
+                    return;
+                  }
+                  setStudyPanelMode("notes");
+                  setIsStudyOpen(true);
+                }}
+                aria-expanded={isStudyOpen && studyPanelMode === "notes"}
                 aria-controls="study-notes"
                 title={isStudyOpen ? "Hide study notes" : "Show study notes"}
               >
@@ -1131,23 +1547,38 @@ export default function App() {
                 const index = lesson.chunks.findIndex((item) => item.id === chunk.id);
                 const isActive = index === activeIndex;
                 const isSelected = index === focusIndex;
+                const starItem = buildSentenceStarItem(chunk);
+                const isStarred = starredIds.has(starItem.id);
                 return (
                   <div
                     key={chunk.id}
-                    ref={(node) => {
-                      chunkRefs.current[chunk.id] = node;
-                    }}
-                    role="button"
-                    tabIndex={0}
                     className={`lyric-row${isActive ? " playing" : ""}${isSelected ? " selected" : ""}`}
-                    onClick={() => seekTo(chunk)}
-                    onKeyDown={(event) => onLyricsKeyDown(event, chunk)}
                   >
-                    <span className="chunk-time">{formatTime(chunk.start)}-{formatTime(chunk.end)}</span>
-                    <span className="lyric-text">
-                      <strong>{chunk.sourceText}</strong>
-                      <span>{chunk.translation || "待翻译"}</span>
-                    </span>
+                    <button
+                      type="button"
+                      ref={(node) => {
+                        chunkRefs.current[chunk.id] = node;
+                      }}
+                      className="lyric-row-main"
+                      onClick={() => seekTo(chunk)}
+                      onKeyDown={(event) => onLyricsKeyDown(event, chunk)}
+                    >
+                      <span className="chunk-time">{formatTime(chunk.start)}-{formatTime(chunk.end)}</span>
+                      <span className="lyric-text">
+                        <strong>{chunk.sourceText}</strong>
+                        <span>{chunk.translation || "待翻译"}</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`star-button${isStarred ? " active" : ""}`}
+                      onClick={() => toggleStar(starItem)}
+                      aria-label={isStarred ? "Remove sentence from stars" : "Star sentence"}
+                      aria-pressed={isStarred}
+                      title={isStarred ? "Remove sentence from stars" : "Star sentence"}
+                    >
+                      <Star size={17} fill={isStarred ? "currentColor" : "none"} />
+                    </button>
                   </div>
                 );
               })}
@@ -1160,57 +1591,137 @@ export default function App() {
           <aside className="study-column" id="study-notes" aria-label="Study notes">
             <div className="study-header">
               <div>
-                <p className="eyebrow">Study</p>
-                <h2>Notes</h2>
+                <p className="eyebrow">{studyPanelMode === "stars" ? "Collection" : "Study"}</p>
+                <h2>{studyPanelMode === "stars" ? "Stars" : "Notes"}</h2>
               </div>
-              <button
-                type="button"
-                className="icon-button"
-                onClick={() => setIsStudyOpen(false)}
-                title="Collapse study notes"
-                aria-label="Collapse study notes"
-              >
-                <PanelRightClose size={18} />
-              </button>
+              <div className="study-header-actions">
+                {studyPanelMode === "stars" ? (
+                  <>
+                    <input
+                      ref={starImportRef}
+                      className="file-input"
+                      type="file"
+                      accept="application/json,.json"
+                      onChange={importStars}
+                      aria-label="Import stars JSON"
+                    />
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() => starImportRef.current?.click()}
+                      title="Import stars JSON"
+                      aria-label="Import stars JSON"
+                    >
+                      <Upload size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={exportStars}
+                      disabled={!currentStarCollection || currentStarCollection.items.length === 0}
+                      title="Export stars JSON"
+                      aria-label="Export stars JSON"
+                    >
+                      <Download size={18} />
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setIsStudyOpen(false)}
+                  title={studyPanelMode === "stars" ? "Collapse starred items" : "Collapse study notes"}
+                  aria-label={studyPanelMode === "stars" ? "Collapse starred items" : "Collapse study notes"}
+                >
+                  <PanelRightClose size={18} />
+                </button>
+              </div>
             </div>
 
-            <div className="readthrough">
-              <div className="section-heading">
-                <Play size={18} />
-                <h2>Connected speech</h2>
+            {studyPanelMode === "stars" ? (
+              <div className="stars-panel">
+                <div className="collection-summary">
+                  <span>{starCount} starred item{starCount === 1 ? "" : "s"}</span>
+                  <span>{starLessonInfo?.fingerprint ?? ""}</span>
+                </div>
+                {starImportError ? <p className="import-error">{starImportError}</p> : null}
+                {renderStarSection("Sentences", sentenceStars, "No starred sentences yet.")}
+                {renderStarSection("Connected speech", connectedSpeechStars, "No starred connected-speech notes yet.")}
+                {renderStarSection("Vocabulary", vocabularyStars, "No starred vocabulary notes yet.")}
               </div>
-              <div className="note-list">
-                {focusChunk.readThrough.length > 0 ? (
-                  focusChunk.readThrough.map((item) => (
-                    <article className="note-card" key={`${item.original}-${item.explanation}`}>
-                      <h3>{item.original}</h3>
-                      <p>{item.explanation}</p>
-                    </article>
-                  ))
-                ) : (
-                  <span className="empty-note">No listening notes for this chunk.</span>
-                )}
-              </div>
-            </div>
+            ) : (
+              <div className="notes-panel">
+                <div className="readthrough">
+                  <div className="section-heading">
+                    <Play size={18} />
+                    <h2>Connected speech</h2>
+                  </div>
+                  <div className="note-list">
+                    {focusChunk.readThrough.length > 0 ? (
+                      focusChunk.readThrough.map((item, index) => {
+                        const starItem = buildNoteStarItem("connectedSpeech", focusChunk, index);
+                        const isStarred = starredIds.has(starItem.id);
+                        return (
+                          <article className="note-card" key={`${item.original}-${item.explanation}`}>
+                            <div className="note-card-header">
+                              <h3>{item.original}</h3>
+                              <button
+                                type="button"
+                                className={`star-button${isStarred ? " active" : ""}`}
+                                onClick={() => toggleStar(starItem)}
+                                aria-label={isStarred ? "Remove connected-speech note from stars" : "Star connected-speech note"}
+                                aria-pressed={isStarred}
+                                title={isStarred ? "Remove connected-speech note from stars" : "Star connected-speech note"}
+                              >
+                                <Star size={17} fill={isStarred ? "currentColor" : "none"} />
+                              </button>
+                            </div>
+                            <p>{item.explanation}</p>
+                          </article>
+                        );
+                      })
+                    ) : (
+                      <span className="empty-note">No listening notes for this chunk.</span>
+                    )}
+                  </div>
+                </div>
 
-            <div className="vocabulary">
-              <div className="section-heading">
-                <ListRestart size={18} />
-                <h2>Vocabulary notes</h2>
+                <div className="vocabulary">
+                  <div className="section-heading">
+                    <ListRestart size={18} />
+                    <h2>Vocabulary notes</h2>
+                  </div>
+                  <div className="note-list">
+                    {focusChunk.vocabulary.length > 0 ? (
+                      focusChunk.vocabulary.map((item, index) => {
+                        const starItem = buildNoteStarItem("vocabulary", focusChunk, index);
+                        const isStarred = starredIds.has(starItem.id);
+                        return (
+                          <article className="note-card" key={`${item.original}-${item.explanation}`}>
+                            <div className="note-card-header">
+                              <h3>{item.original}</h3>
+                              <button
+                                type="button"
+                                className={`star-button${isStarred ? " active" : ""}`}
+                                onClick={() => toggleStar(starItem)}
+                                aria-label={isStarred ? "Remove vocabulary note from stars" : "Star vocabulary note"}
+                                aria-pressed={isStarred}
+                                title={isStarred ? "Remove vocabulary note from stars" : "Star vocabulary note"}
+                              >
+                                <Star size={17} fill={isStarred ? "currentColor" : "none"} />
+                              </button>
+                            </div>
+                            <p>{item.explanation}</p>
+                          </article>
+                        );
+                      })
+                    ) : (
+                      <span className="empty-note">No vocabulary notes for this chunk.</span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="note-list">
-                {focusChunk.vocabulary.length > 0 ? (
-                  focusChunk.vocabulary.map((item) => (
-                    <article className="note-card" key={`${item.original}-${item.explanation}`}>
-                      <h3>{item.original}</h3>
-                      <p>{item.explanation}</p>
-                    </article>
-                  ))
-                ) : (
-                  <span className="empty-note">No vocabulary notes for this chunk.</span>
-                )}
-              </div>
-            </div>
+            )}
           </aside>
         ) : null}
       </section>
