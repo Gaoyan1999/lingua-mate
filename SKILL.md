@@ -30,10 +30,12 @@ Do not require cloud transcription or runtime AI calls from the generated webpag
 This skill should run as an automatic local pipeline. Given an English video or podcast, the agent should:
 
 1. Determine whether the source material is a local file or a concrete Bilibili video link.
-2. If it is a Bilibili link, download it into a local folder named after the video.
-3. Extract and split the transcript locally.
-4. Create a lite translation subagent for English-to-Chinese chunk translation and learning notes.
-5. Save the translated result as JSON in the generated material folder.
+2. Ask the user for the learner's English level if it was not already provided. Prefer CEFR-style levels (`A1`, `A2`, `B1`, `B2`, `C1`, `C2`), but accept plain descriptions such as beginner, intermediate, advanced, IELTS/TOEFL level, or school grade.
+3. If it is a Bilibili link, download it into a local folder named after the video.
+4. Extract and split the transcript locally.
+5. Create a lite translation subagent for English-to-Chinese chunk translation and learning notes. Tell it the learner level and require `readThrough` and `vocabulary` notes to match that level.
+6. Save the translated result as JSON in the generated material folder.
+7. Clean up intermediate generation files unless the user explicitly asks to keep them.
 
 Do not stop after transcription unless the user explicitly asks for transcript-only output.
 
@@ -49,12 +51,16 @@ materials/
     lesson.json
 ```
 
-The resource folder should contain the original video or podcast file plus generated JSON. Use a stable resource name derived from the media filename, such as `S10E01` for `S10E01.mp4`. Avoid leaving intermediate transcription files in the final folder unless the user asks to keep them.
+The resource folder should contain the original video or podcast file plus final generated JSON. Use a stable resource name derived from the media filename, such as `S10E01` for `S10E01.mp4`. Avoid leaving intermediate transcription files in the final folder unless the user asks to keep them.
 
 ## Steps
 
-1. Create the generated material directory outside the reusable skill/template source, for example `materials/<resource-name>/`. Put or copy the original media file in that folder when practical, so the original material and generated JSON stay together.
-2. If the source is a Bilibili video link, download it first:
+1. Ask for the learner's English level if not already known. Use it for study-note difficulty and density:
+   - `A1-A2` / beginner: explain common reductions, basic phrases, and high-frequency vocabulary in simple Chinese.
+   - `B1-B2` / intermediate: focus on natural connected speech, phrasal verbs, idioms, collocations, and implied meaning.
+   - `C1-C2` / advanced: avoid obvious vocabulary; focus on subtle register, cultural references, discourse markers, pronunciation reductions, and nuanced usage.
+2. Create the generated material directory outside the reusable skill/template source, for example `materials/<resource-name>/`. Put or copy the original media file in that folder when practical, so the original material and generated JSON stay together.
+3. If the source is a Bilibili video link, download it first:
 
    ```bash
    pnpm bilibili -- "https://www.bilibili.com/video/BV..." --output-root materials
@@ -62,7 +68,7 @@ The resource folder should contain the original video or podcast file plus gener
 
    The downloader supports concrete `/video/BV...` and `/video/av...` links. It rejects search, channel, list, and bangumi pages in v1. If the link has `?p=N`, that part is downloaded; otherwise page 1 is used. For higher-quality restricted videos, pass `--sessdata "$BILIBILI_SESSDATA"` or set the environment variable.
 
-3. Run media preparation:
+4. Run media preparation:
 
    ```bash
    python3 scripts/prepare_media.py materials/S10E01/S10E01.mp4 --out materials/S10E01 --source-language en --target-language Chinese
@@ -78,35 +84,36 @@ The resource folder should contain the original video or podcast file plus gener
 
    This writes `materials/<media-name>/chunks.json` with `{ "timeStart", "timeEnd", "origin", "translated" }[]`. Leave `translated` empty for Codex/cc to fill with Chinese later.
 
-4. For translation work, create a focused subagent and assign it a lite model such as `gpt-5.4-mini`, because English-to-Chinese chunk translation is straightforward and benefits from parallel, low-cost batching. Ask the subagent to translate `chunks.json` into Chinese and preserve every chunk `id` or timestamp.
-5. Merge filled batches:
+5. For translation work, create a focused subagent and assign it a lite model such as `gpt-5.4-mini`, because English-to-Chinese chunk translation is straightforward and benefits from parallel, low-cost batching. Ask the subagent to translate `chunks.json` into Chinese and preserve every chunk `id` or timestamp.
+6. Merge filled batches:
 
    ```bash
    python3 scripts/merge_batches.py materials/S10E01/lesson.draft.json materials/S10E01/ai_filled/*.json --out materials/S10E01/lesson.json
    ```
 
-6. Validate:
+7. Validate:
 
    ```bash
    python3 scripts/validate_lesson.py materials/S10E01/lesson.json
    ```
 
-7. Enrich a specific finished lesson with connected-speech and vocabulary notes:
+8. Enrich a specific finished lesson with connected-speech and vocabulary notes:
 
    ```bash
    pnpm enrich -- --lesson materials/S10E01/lesson.json
    ```
 
-   This step is explicit and targeted. It only updates the named lesson file. Use `--overwrite` only when regenerating existing notes intentionally.
+   This step is explicit and targeted. It only updates the named lesson file. Use `--overwrite` only when regenerating existing notes intentionally. Include the learner level in the prompt/instructions so connected-speech and vocabulary notes are selected for that level.
 
-8. Keep generated Library files under `materials/<slug>/`. Register each Library item with the Vite template so the homepage can list multiple Library items:
+9. Keep generated Library files under `materials/<slug>/`. Register each Library item with the Vite template so the homepage can list multiple Library items:
 
    ```bash
    python3 scripts/apply_chunks_to_template.py --chunks materials/S10E01/chunks.json --media materials/S10E01/S10E01.mp4 --lesson-out materials/S10E01/lesson.json --lesson-id S10E01 --link-template
    ```
 
    This updates `assets/vite-template/public/data/lessons.json`, links the Library item under `assets/vite-template/public/data/lessons/<lesson-id>.json`, and keeps `assets/vite-template/public/data/lesson.json` as the latest Library fallback. Copy or symlink media into `assets/vite-template/public/media/`. Keep media paths relative to the Vite public root, such as `/media/source.mp4`.
-9. Run the generated page:
+10. After final JSON is validated and linked, delete intermediate files unless the user asked to keep them. Remove generated working folders/files such as `ai_batches/`, `ai_filled/`, `.lingua-mate-work/`, extracted `audio.wav`, Whisper scratch output, and Bilibili `.m4s` fragments. Keep the original media file, final `lesson.json`, `chunks.json` when useful for reruns, transcript exports explicitly requested by the user, and linked template data.
+11. Run the generated page:
 
    ```bash
    pnpm install
@@ -156,13 +163,16 @@ The optional `lessons.json` Library index should be:
 - Keep translations natural rather than word-for-word when needed.
 - Use `readThrough` for listening issues: reductions, linking, weak forms, dropped sounds, stress, contractions, or fast-speech phrasing.
 - Choose vocabulary that helps comprehension: idioms, collocations, grammar patterns, advanced words, cultural references, or easily confused phrases.
+- Match `readThrough` and `vocabulary` note selection to the learner's English level. Beginner learners need more common phrase help; advanced learners need fewer obvious notes and more nuance.
 - Keep notes concise and selective. Prefer 0-3 useful entries per section per chunk, with no filler.
 - If source and target language are the same, still provide read-through and vocabulary notes.
 
 ## Quality Checks
 
-- Verify the media file loads in the generated Vite app.
-- Confirm subtitle highlighting follows playback time.
 - Confirm every chunk has monotonic timestamps and non-empty source text.
 - Confirm generated JSON passes `scripts/validate_lesson.py`.
 - For long Library items, generate and merge AI batches instead of placing all content inline in app code.
+- Keep default verification fast for generated lessons: check output files exist, inspect/validate JSON, and avoid app-level verification.
+- It is okay to run Vite build or start the local dev server when useful, especially after reusable source-code changes or when the user wants to try the generated page.
+- Do not open the Codex internal browser after generating a lesson unless the user explicitly asks for browser verification. Browser verification is too time-costly for normal media generation.
+- If source code did not change, do not spend time fixing frontend runtime warnings during media generation unless they block the requested lesson output.
