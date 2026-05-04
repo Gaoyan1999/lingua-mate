@@ -40,6 +40,9 @@ const DEFAULT_MEDIA_ASPECT_RATIO = 16 / 9;
 const DEFAULT_SUBTITLE_MASK = { x: 8, y: 78, width: 84, height: 12 };
 const MIN_MASK_HEIGHT = 5;
 const MIN_MASK_WIDTH = 8;
+const DEFAULT_SUBTITLE_MASK_BLUR = 16;
+const MIN_SUBTITLE_MASK_BLUR = 0;
+const MAX_SUBTITLE_MASK_BLUR = 24;
 const STAR_TYPE_ORDER: Record<StarItemType, number> = {
   sentence: 0,
   connectedSpeech: 1,
@@ -61,6 +64,7 @@ type PlayerConfig = {
   isSubtitleMaskEnabled: boolean;
   shouldUnmaskOnPause: boolean;
   subtitleMask: SubtitleMask;
+  subtitleMaskBlur: number;
   maskShortcut: string;
   studyNotesShortcut: string;
   isStudyOpen: boolean;
@@ -179,6 +183,7 @@ const DEFAULT_PLAYER_CONFIG: PlayerConfig = {
   isSubtitleMaskEnabled: false,
   shouldUnmaskOnPause: true,
   subtitleMask: DEFAULT_SUBTITLE_MASK,
+  subtitleMaskBlur: DEFAULT_SUBTITLE_MASK_BLUR,
   maskShortcut: "M",
   studyNotesShortcut: "N",
   isStudyOpen: false,
@@ -343,6 +348,11 @@ function normalizeSubtitleMask(value: unknown): SubtitleMask {
   };
 }
 
+function normalizeSubtitleMaskBlur(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_SUBTITLE_MASK_BLUR;
+  return clamp(Math.round(value), MIN_SUBTITLE_MASK_BLUR, MAX_SUBTITLE_MASK_BLUR);
+}
+
 function readPlayerConfig(): PlayerConfig {
   const stored = readStorageValue(PLAYER_CONFIG_STORAGE_KEY);
   if (!isRecord(stored)) return DEFAULT_PLAYER_CONFIG;
@@ -362,6 +372,7 @@ function readPlayerConfig(): PlayerConfig {
         ? stored.shouldUnmaskOnPause
         : DEFAULT_PLAYER_CONFIG.shouldUnmaskOnPause,
     subtitleMask: normalizeSubtitleMask(stored.subtitleMask),
+    subtitleMaskBlur: normalizeSubtitleMaskBlur(stored.subtitleMaskBlur),
     maskShortcut: normalizeShortcut(stored.maskShortcut, DEFAULT_PLAYER_CONFIG.maskShortcut),
     studyNotesShortcut: normalizeShortcut(stored.studyNotesShortcut, DEFAULT_PLAYER_CONFIG.studyNotesShortcut),
     isStudyOpen: typeof stored.isStudyOpen === "boolean" ? stored.isStudyOpen : DEFAULT_PLAYER_CONFIG.isStudyOpen,
@@ -511,6 +522,7 @@ export default function App() {
   const [isSubtitleMaskEnabled, setIsSubtitleMaskEnabled] = useState(initialPlayerConfig.isSubtitleMaskEnabled);
   const [shouldUnmaskOnPause, setShouldUnmaskOnPause] = useState(initialPlayerConfig.shouldUnmaskOnPause);
   const [subtitleMask, setSubtitleMask] = useState<SubtitleMask>(initialPlayerConfig.subtitleMask);
+  const [subtitleMaskBlur, setSubtitleMaskBlur] = useState(initialPlayerConfig.subtitleMaskBlur);
   const [maskShortcut, setMaskShortcut] = useState(initialPlayerConfig.maskShortcut);
   const [studyNotesShortcut, setStudyNotesShortcut] = useState(initialPlayerConfig.studyNotesShortcut);
   const [query, setQuery] = useState("");
@@ -654,6 +666,7 @@ export default function App() {
       isSubtitleMaskEnabled,
       shouldUnmaskOnPause,
       subtitleMask,
+      subtitleMaskBlur,
       maskShortcut,
       studyNotesShortcut,
       isStudyOpen,
@@ -664,6 +677,7 @@ export default function App() {
     isSubtitleMaskEnabled,
     shouldUnmaskOnPause,
     subtitleMask,
+    subtitleMaskBlur,
     maskShortcut,
     studyNotesShortcut,
     isStudyOpen,
@@ -1151,6 +1165,14 @@ export default function App() {
     setMaskShortcut(value);
   }
 
+  function changeSubtitleMaskBlur(event: ChangeEvent<HTMLInputElement>) {
+    const value = Number(event.target.value);
+    const nextBlur = Number.isFinite(value)
+      ? clamp(Math.round(value), MIN_SUBTITLE_MASK_BLUR, MAX_SUBTITLE_MASK_BLUR)
+      : DEFAULT_SUBTITLE_MASK_BLUR;
+    setSubtitleMaskBlur(nextBlur);
+  }
+
   function changeStudyNotesShortcut(event: ChangeEvent<HTMLInputElement>) {
     const value = event.target.value.trim().slice(-1).toUpperCase();
     setStudyNotesShortcut(value);
@@ -1587,7 +1609,8 @@ export default function App() {
                   top: `${subtitleMask.y}%`,
                   width: `${subtitleMask.width}%`,
                   height: `${subtitleMask.height}%`,
-                }}
+                  "--subtitle-mask-blur": `${subtitleMaskBlur}px`,
+                } as CSSProperties}
                 aria-hidden="true"
                 onPointerDown={(event) => startMaskDrag(event, "move")}
                 onPointerMove={dragMask}
@@ -1862,6 +1885,21 @@ export default function App() {
                 placeholder="M"
                 aria-label="Subtitle mask shortcut"
               />
+            </label>
+            <label className="setting-field range-field">
+              <span>Subtitle mask blur</span>
+              <div className="range-control">
+                <input
+                  min={MIN_SUBTITLE_MASK_BLUR}
+                  max={MAX_SUBTITLE_MASK_BLUR}
+                  step={1}
+                  type="range"
+                  value={subtitleMaskBlur}
+                  onChange={changeSubtitleMaskBlur}
+                  aria-label="Subtitle mask blur"
+                />
+                <output>{subtitleMaskBlur}px</output>
+              </div>
             </label>
             <label className="setting-field">
               <span>Study notes shortcut</span>
