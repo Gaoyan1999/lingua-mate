@@ -8,6 +8,7 @@
     "build": "pnpm --dir assets/vite-template build",
     "split": "python3 scripts/split_transcription.py",
     "bilibili": "python3 scripts/download_bilibili.py",
+    "youtube": "python3 scripts/download_youtube.py",
     "fill": "python3 scripts/fill_lesson_with_codex.py",
     "translate": "python3 scripts/translate_chunks_with_codex.py --chunks ../test-lingua-mate/materials/s10e01/chunks.json",
     "enrich": "python3 scripts/enrich_lesson_with_codex.py",
