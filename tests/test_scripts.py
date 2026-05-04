@@ -18,6 +18,7 @@ import apply_chunks_to_template
 import enrich_lesson_with_codex
 import fill_lesson_with_codex
 import download_bilibili
+import download_youtube
 
 
 class PrepareMediaTests(unittest.TestCase):
@@ -460,6 +461,56 @@ class DownloadBilibiliTests(unittest.TestCase):
         )
 
         self.assertEqual(command, ["ffmpeg", "-y", "-i", "video.m4s", "-i", "audio.m4s", "-c", "copy", "out.mp4"])
+
+
+class DownloadYouTubeTests(unittest.TestCase):
+    def test_classify_accepts_watch_url(self):
+        parsed = download_youtube.classify_youtube_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=abc")
+
+        self.assertEqual(parsed.video_id, "dQw4w9WgXcQ")
+
+    def test_classify_accepts_short_url(self):
+        parsed = download_youtube.classify_youtube_url("https://youtu.be/dQw4w9WgXcQ?t=43")
+
+        self.assertEqual(parsed.video_id, "dQw4w9WgXcQ")
+
+    def test_classify_accepts_shorts_embed_and_live_urls(self):
+        self.assertEqual(
+            download_youtube.classify_youtube_url("https://www.youtube.com/shorts/dQw4w9WgXcQ").video_id,
+            "dQw4w9WgXcQ",
+        )
+        self.assertEqual(
+            download_youtube.classify_youtube_url("https://www.youtube.com/embed/dQw4w9WgXcQ").video_id,
+            "dQw4w9WgXcQ",
+        )
+        self.assertEqual(
+            download_youtube.classify_youtube_url("https://www.youtube.com/live/dQw4w9WgXcQ").video_id,
+            "dQw4w9WgXcQ",
+        )
+
+    def test_classify_rejects_non_video_url(self):
+        with self.assertRaises(ValueError):
+            download_youtube.classify_youtube_url("https://www.youtube.com/results?search_query=english")
+
+    def test_sanitize_title_removes_unsafe_characters(self):
+        self.assertEqual(download_youtube.sanitize_title(" Hello / YouTube：Video? "), "HelloYouTubeVideo")
+        self.assertEqual(download_youtube.sanitize_title("???", "fallback"), "fallback")
+
+    def test_build_ydl_options_uses_single_video_mp4_defaults(self):
+        options = download_youtube.build_ydl_options(
+            Path("out/%(title)s.%(ext)s"),
+            cookies=Path("/tmp/cookies.txt"),
+            quiet=True,
+            skip_download=True,
+        )
+
+        self.assertEqual(options["outtmpl"], "out/%(title)s.%(ext)s")
+        self.assertEqual(options["format"], download_youtube.DEFAULT_FORMAT)
+        self.assertEqual(options["cookiefile"], "/tmp/cookies.txt")
+        self.assertTrue(options["noplaylist"])
+        self.assertEqual(options["merge_output_format"], "mp4")
+        self.assertTrue(options["quiet"])
+        self.assertTrue(options["skip_download"])
 
 
 if __name__ == "__main__":

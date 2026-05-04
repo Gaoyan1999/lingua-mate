@@ -13,6 +13,8 @@ Use this skill when the user provides or references a local English media file a
 
 If the user provides a Bilibili URL instead of a local file, first confirm it is a concrete `/video/BV...` or `/video/av...` link, download it locally, then continue with the normal media pipeline.
 
+If the user provides a YouTube URL instead of a local file, first confirm it is a concrete watch, `youtu.be`, Shorts, embed, or live video link, download it locally, then continue with the normal media pipeline.
+
 ## Requirements
 
 Check these before processing:
@@ -22,6 +24,7 @@ Check these before processing:
 - Node.js and `pnpm` are available for the Vite template.
 - The user has permission to process the media.
 - For private or high-quality Bilibili videos, the user may need to provide a `SESSDATA` value or set `BILIBILI_SESSDATA`.
+- YouTube download uses the reference `youtube-dl` checkout at `/Users/daniel/Workspace/youtube-dl` by default. For another checkout, set `YOUTUBE_DL_ROOT` or pass `--youtube-dl-root`. For restricted videos, the user may need a Netscape cookies file and set `YOUTUBE_COOKIES` or pass `--cookies`.
 
 Do not require cloud transcription or runtime AI calls from the generated webpage. Codex/cc should generate translation and learning content into JSON files before the page runs.
 
@@ -29,9 +32,9 @@ Do not require cloud transcription or runtime AI calls from the generated webpag
 
 This skill should run as an automatic local pipeline. Given an English video or podcast, the agent should:
 
-1. Determine whether the source material is a local file or a concrete Bilibili video link.
+1. Determine whether the source material is a local file, a concrete Bilibili video link, or a concrete YouTube video link.
 2. Ask the user for the learner's English level if it was not already provided. Keep the question simple: "What's your English level? You can answer beginner, intermediate, advanced, or tell me your test/school level." Also accept CEFR labels such as `A2`, `B1`, `B2`, or `C1` if the user provides them. Stop and wait for the user's answer before generating translations, `readThrough`, or `vocabulary`; do not infer a default level.
-3. If it is a Bilibili link, download it into a local folder named after the video.
+3. If it is a Bilibili or YouTube link, download it into a local folder named after the video.
 4. Extract and split the transcript locally.
 5. Fill English-to-Chinese translations and learning notes with `scripts/fill_lesson_with_codex.py`, passing the confirmed learner level with `--learner-level`.
 6. Save the translated result as JSON in the generated material folder.
@@ -63,13 +66,23 @@ The resource folder should contain the original video or podcast file plus final
    - advanced: avoid obvious vocabulary; focus on subtle register, cultural references, discourse markers, pronunciation reductions, and nuanced usage.
    - If the user gives a CEFR label, map `A1-A2` to beginner, `B1-B2` to intermediate, and `C1-C2` to advanced.
 2. Create the generated material directory outside the reusable skill/template source, for example `/Users/daniel/tools/test-lingua-mate/materials/<resource-name>/`. Put or copy the original media file in that folder when practical, so the original material and generated JSON stay together.
-3. If the source is a Bilibili video link, download it first:
+3. If the source is a Bilibili or YouTube video link, download it first.
+
+   For Bilibili:
 
    ```bash
    pnpm bilibili -- "https://www.bilibili.com/video/BV..." --output-root /Users/daniel/tools/test-lingua-mate/materials
    ```
 
    The downloader supports concrete `/video/BV...` and `/video/av...` links. It rejects search, channel, list, and bangumi pages in v1. If the link has `?p=N`, that part is downloaded; otherwise page 1 is used. For higher-quality restricted videos, pass `--sessdata "$BILIBILI_SESSDATA"` or set the environment variable.
+
+   For YouTube:
+
+   ```bash
+   pnpm youtube -- "https://www.youtube.com/watch?v=..." --output-root /Users/daniel/tools/test-lingua-mate/materials
+   ```
+
+   The downloader supports concrete watch, `youtu.be`, Shorts, embed, and live video links. It rejects search, channel, and playlist-only pages in v1. It uses the reference `youtube-dl` checkout at `/Users/daniel/Workspace/youtube-dl` by default; pass `--youtube-dl-root` or set `YOUTUBE_DL_ROOT` to use another checkout. For restricted videos, pass `--cookies /path/to/cookies.txt` or set `YOUTUBE_COOKIES`.
 
 4. Run media preparation:
 
@@ -122,7 +135,7 @@ The resource folder should contain the original video or podcast file plus final
    ```
 
    This updates `/Users/daniel/tools/test-lingua-mate/registry.json`, exposes it as `assets/vite-template/public/data/registry.json`, links the Library item under `assets/vite-template/public/data/lessons/<lesson-id>.json`, and keeps `assets/vite-template/public/data/lesson.json` as the latest Library fallback. `assets/vite-template/public/data/lessons.json` is only a compatibility link to the same registry. Copy or symlink media into `assets/vite-template/public/media/`. Keep media paths relative to the Vite public root, such as `/media/source.mp4`.
-10. After final JSON is validated and linked, delete intermediate files unless the user asked to keep them. Remove generated working folders/files such as `ai_batches/`, `ai_filled/`, `.lingua-mate-work/`, extracted `audio.wav`, Whisper scratch output, and Bilibili `.m4s` fragments. Keep the original media file, final `lesson.json`, `chunks.json` when useful for reruns, transcript exports explicitly requested by the user, and linked template data.
+10. After final JSON is validated and linked, delete intermediate files unless the user asked to keep them. Remove generated working folders/files such as `ai_batches/`, `ai_filled/`, `.lingua-mate-work/`, extracted `audio.wav`, Whisper scratch output, Bilibili `.m4s` fragments, and youtube-dl partial files. Keep the original media file, final `lesson.json`, `chunks.json` when useful for reruns, transcript exports explicitly requested by the user, and linked template data.
 11. Run the generated page:
 
    ```bash

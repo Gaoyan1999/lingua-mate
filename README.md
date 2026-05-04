@@ -6,6 +6,7 @@ Current input support:
 
 - Local video or audio files
 - Bilibili video URLs, only concrete `https://www.bilibili.com/video/BV...` or `/video/av...` links
+- YouTube video URLs, only concrete watch, `youtu.be`, Shorts, embed, or live video links
 
 ## Recommended Workflow
 
@@ -47,11 +48,20 @@ My English level is B1.
 Put the material in /absolute/path/to/lingua-mate-materials.
 ```
 
+For a YouTube video:
+
+```text
+Use the lingua-mate skill. I want to learn this YouTube video:
+https://www.youtube.com/watch?v=...
+My English level is B1.
+Put the material in /absolute/path/to/lingua-mate-materials.
+```
+
 Codex will usually:
 
-1. Check whether the source is a local file or a supported Bilibili video link.
+1. Check whether the source is a local file, a supported Bilibili video link, or a supported YouTube video link.
 2. Ask for your English level if you did not provide it.
-3. Download the Bilibili video when needed.
+3. Download the Bilibili or YouTube video when needed.
 4. Extract audio and transcribe it locally with Whisper.
 5. Split the transcript into study chunks.
 6. Generate Chinese translations, read-through listening notes, and vocabulary notes.
@@ -76,6 +86,12 @@ For private or higher-quality Bilibili videos, you may also need a Bilibili `SES
 export BILIBILI_SESSDATA="..."
 ```
 
+YouTube downloads use the reference `youtube-dl` checkout at `/Users/daniel/Workspace/youtube-dl` by default. To use a different checkout, set `YOUTUBE_DL_ROOT` or pass `--youtube-dl-root`. For videos that need browser cookies, export a Netscape cookies file path:
+
+```bash
+export YOUTUBE_COOKIES="/absolute/path/to/cookies.txt"
+```
+
 Only process media that you have permission to use.
 
 ## Generated Files
@@ -86,7 +102,7 @@ Generated content is intentionally kept out of source control. A finished materi
 - `chunks.json`
 - `lesson.json`
 
-Temporary files such as extracted audio, Whisper scratch files, `ai_batches/`, `ai_filled/`, and Bilibili `.m4s` fragments can be removed after the final `lesson.json` is validated and linked.
+Temporary files such as extracted audio, Whisper scratch files, `ai_batches/`, `ai_filled/`, Bilibili `.m4s` fragments, and youtube-dl partial files can be removed after the final `lesson.json` is validated and linked.
 
 The reusable source code for this skill lives in:
 
