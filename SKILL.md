@@ -11,9 +11,9 @@ Turn a local English video or podcast into a Vite study player with Chinese subt
 
 Use this skill when the user provides or references a local English media file and wants a Chinese-output webpage for language learning. V1 is designed for 5-30 minute videos or podcasts.
 
-If the user provides a Bilibili URL instead of a local file, first confirm it is a concrete `/video/BV...` or `/video/av...` link, download it locally, then continue with the normal media pipeline.
+If the user provides a Bilibili URL instead of a local file, first confirm it is a concrete `/video/BV...` or `/video/av...` link, then ask for the learner's English level before downloading. Do not start the Bilibili download until the level is known.
 
-If the user provides a YouTube URL instead of a local file, first confirm it is a concrete watch, `youtu.be`, Shorts, embed, or live video link, download it locally, then continue with the normal media pipeline.
+If the user provides a YouTube URL instead of a local file, first confirm it is a concrete watch, `youtu.be`, Shorts, embed, or live video link, then ask for the learner's English level before downloading. Do not start the YouTube download until the level is known.
 
 ## Requirements
 
@@ -33,8 +33,8 @@ Do not require cloud transcription or runtime AI calls from the generated webpag
 This skill should run as an automatic local pipeline. Given an English video or podcast, the agent should:
 
 1. Determine whether the source material is a local file, a concrete Bilibili video link, or a concrete YouTube video link.
-2. Ask the user for the learner's English level if it was not already provided. Keep the question simple: "What's your English level? You can answer beginner, intermediate, advanced, or tell me your test/school level." Also accept CEFR labels such as `A2`, `B1`, `B2`, or `C1` if the user provides them. Stop and wait for the user's answer before generating translations, `readThrough`, or `vocabulary`; do not infer a default level.
-3. If it is a Bilibili or YouTube link, download it into a local folder named after the video.
+2. Ask the user for the learner's English level if it was not already provided. Keep the question simple: "What's your English level? You can answer beginner, intermediate, advanced, or tell me your test/school level." Also accept CEFR labels such as `A2`, `B1`, `B2`, or `C1` if the user provides them. Stop and wait for the user's answer before any download, transcription, translation, `readThrough`, or `vocabulary` work; do not infer a default level.
+3. If it is a Bilibili or YouTube link, download it into a local folder named after the video after the learner level is confirmed.
 4. Extract and split the transcript locally.
 5. Fill English-to-Chinese translations and learning notes with `scripts/fill_lesson_with_codex.py`, passing the confirmed learner level with `--learner-level`.
 6. Save the translated result as JSON in the generated material folder.
@@ -66,7 +66,7 @@ The resource folder should contain the original video or podcast file plus final
    - advanced: avoid obvious vocabulary; focus on subtle register, cultural references, discourse markers, pronunciation reductions, and nuanced usage.
    - If the user gives a CEFR label, map `A1-A2` to beginner, `B1-B2` to intermediate, and `C1-C2` to advanced.
 2. Create the generated material directory outside the reusable skill/template source, for example `/Users/daniel/tools/test-lingua-mate/materials/<resource-name>/`. Put or copy the original media file in that folder when practical, so the original material and generated JSON stay together.
-3. If the source is a Bilibili or YouTube video link, download it first.
+3. If the source is a Bilibili or YouTube video link, download it after the learner level is confirmed.
 
    For Bilibili:
 
