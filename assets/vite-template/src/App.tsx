@@ -164,6 +164,27 @@ function formatTime(seconds: number): string {
   return `${minutes}:${remaining.toString().padStart(2, "0")}`;
 }
 
+function getStarTypeLabel(type: StarItemType): string {
+  if (type === "connectedSpeech") return "connected speech";
+  if (type === "vocabulary") return "vocabulary";
+  return "sentence";
+}
+
+function getStarSearchText(item: StarItem): string {
+  const timeRange = `${formatTime(item.snapshot.start)} ${formatTime(item.snapshot.end)}`;
+  if (item.type === "sentence") {
+    return `${getStarTypeLabel(item.type)} ${timeRange} ${item.snapshot.sourceText} ${item.snapshot.translation}`;
+  }
+
+  return [
+    getStarTypeLabel(item.type),
+    timeRange,
+    item.snapshot.original,
+    item.snapshot.explanation,
+    item.snapshot.chunkSourceText,
+  ].join(" ");
+}
+
 function findActiveChunk(chunks: LessonChunk[], time: number): number {
   const index = chunks.findIndex((chunk) => time >= chunk.start && time < chunk.end);
   if (index >= 0) return index;
@@ -531,6 +552,7 @@ export default function App() {
   const [playProgress, setPlayProgress] = useState<PlaybackProgressMap>(() => readPlaybackProgress());
   const [starCollections, setStarCollections] = useState<StarCollectionMap>(() => readStarCollections());
   const [studyPanelMode, setStudyPanelMode] = useState<StudyPanelMode>("notes");
+  const [starQuery, setStarQuery] = useState("");
   const [starImportError, setStarImportError] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [mediaAspectRatio, setMediaAspectRatio] = useState(DEFAULT_MEDIA_ASPECT_RATIO);
@@ -584,6 +606,11 @@ export default function App() {
       }),
     [currentStarCollection],
   );
+  const filteredTimelineStars = useMemo(() => {
+    const needle = starQuery.trim().toLowerCase();
+    if (!needle) return timelineStars;
+    return timelineStars.filter((item) => getStarSearchText(item).toLowerCase().includes(needle));
+  }, [starQuery, timelineStars]);
   const starCount = currentStarCollection?.items.length ?? 0;
 
   const filteredLessons = useMemo(() => {
@@ -1755,7 +1782,19 @@ export default function App() {
             {studyPanelMode === "stars" ? (
               <div className="stars-panel">
                 {starImportError ? <p className="import-error">{starImportError}</p> : null}
-                {renderStarSection("Timeline", timelineStars, "No starred items yet.")}
+                <label className="search-box compact star-search">
+                  <Search size={18} />
+                  <input
+                    value={starQuery}
+                    onChange={(event) => setStarQuery(event.target.value)}
+                    placeholder="Search starred content"
+                  />
+                </label>
+                {renderStarSection(
+                  "Timeline",
+                  filteredTimelineStars,
+                  starQuery.trim() ? "No starred items match the search." : "No starred items yet.",
+                )}
               </div>
             ) : (
               <div className="notes-panel">

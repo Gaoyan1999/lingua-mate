@@ -819,6 +819,10 @@ audio {
   line-height: 1.45;
 }
 
+.star-search {
+  width: 100%;
+}
+
 .file-input {
   position: absolute;
   width: 1px;
