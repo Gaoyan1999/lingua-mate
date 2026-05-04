@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,8 @@ SCHEMA = {
     },
     "required": ["chunks"],
 }
+
+REASONING_EFFORTS = ("low", "medium", "high", "xhigh")
 
 
 def read_json(path: Path) -> Any:
@@ -151,30 +154,22 @@ def fill_batch(
     model: str,
     cwd: Path,
     skip_git_repo_check: bool,
+    model_reasoning_effort: str | None,
 ) -> list[dict[str, Any]]:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         schema_path = temp_path / "schema.json"
         output_path = temp_path / "output.json"
         write_json(schema_path, SCHEMA)
-        cmd = [
-            "codex",
-            "exec",
-            "-C",
-            str(cwd),
-            "--ephemeral",
-            "--sandbox",
-            "read-only",
-            "--model",
-            model,
-            "--output-schema",
-            str(schema_path),
-            "--output-last-message",
-            str(output_path),
-            build_prompt(batch, learner_level),
-        ]
-        if skip_git_repo_check:
-            cmd.insert(5, "--skip-git-repo-check")
+        cmd = build_codex_command(
+            cwd=cwd,
+            model=model,
+            schema_path=schema_path,
+            output_path=output_path,
+            prompt=build_prompt(batch, learner_level),
+            skip_git_repo_check=skip_git_repo_check,
+            model_reasoning_effort=model_reasoning_effort,
+        )
         result = subprocess.run(cmd, check=False, text=True, capture_output=True)
         if result.returncode != 0:
             sys.stderr.write(result.stdout)
@@ -185,6 +180,43 @@ def fill_batch(
     if not isinstance(chunks, list):
         raise ValueError("Codex output missing chunks array.")
     return chunks
+
+
+def build_codex_command(
+    cwd: Path,
+    model: str,
+    schema_path: Path,
+    output_path: Path,
+    prompt: str,
+    skip_git_repo_check: bool,
+    model_reasoning_effort: str | None,
+) -> list[str]:
+    cmd = ["codex", "exec"]
+    if model_reasoning_effort:
+        cmd.extend(["-c", f'model_reasoning_effort="{model_reasoning_effort}"'])
+    cmd.extend(
+        [
+            "-C",
+            str(cwd),
+            "--ephemeral",
+            "--sandbox",
+            "read-only",
+            "--model",
+            model,
+        ]
+    )
+    if skip_git_repo_check:
+        cmd.append("--skip-git-repo-check")
+    cmd.extend(
+        [
+            "--output-schema",
+            str(schema_path),
+            "--output-last-message",
+            str(output_path),
+            prompt,
+        ]
+    )
+    return cmd
 
 
 def normalize_note_list(value: Any, field: str, chunk_id: str) -> list[dict[str, str]]:
@@ -234,7 +266,13 @@ def parse_args() -> argparse.Namespace:
         help="Required learner level, for example beginner, intermediate, advanced, IELTS 6.5, or B2.",
     )
     parser.add_argument("--model", default="gpt-5.4-mini", help="Codex model used for generation.")
+    parser.add_argument(
+        "--model-reasoning-effort",
+        choices=REASONING_EFFORTS,
+        help="Codex reasoning effort for generation batches. Use 'low' for faster translation/note generation.",
+    )
     parser.add_argument("--batch-size", type=int, default=8, help="Chunks per Codex batch.")
+    parser.add_argument("--parallel", type=int, default=1, help="Number of Codex batches to run concurrently.")
     parser.add_argument("--limit", type=int, help="Fill at most this many pending chunks.")
     parser.add_argument("--overwrite", action="store_true", help="Regenerate completed chunks.")
     parser.add_argument(
@@ -254,6 +292,8 @@ def main() -> int:
         raise SystemExit("--learner-level is required.")
     if args.batch_size < 1:
         raise SystemExit("--batch-size must be at least 1.")
+    if args.parallel < 1:
+        raise SystemExit("--parallel must be at least 1.")
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be at least 1.")
 
@@ -279,13 +319,52 @@ def main() -> int:
     cwd = Path.cwd()
     total = 0
     skip_git_repo_check = not args.no_skip_git_repo_check
-    for offset in range(0, len(pending), args.batch_size):
-        batch = pending[offset : offset + args.batch_size]
-        print(f"Filling batch {offset // args.batch_size + 1}: {batch[0]['id']}-{batch[-1]['id']}", flush=True)
-        filled = fill_batch(batch, args.learner_level.strip(), args.model, cwd, skip_git_repo_check)
-        total += apply_filled(lesson, filled)
-        write_json(out_path, lesson)
-        print(f"Updated {total} chunks so far.", flush=True)
+    batches = [
+        (offset // args.batch_size + 1, pending[offset : offset + args.batch_size])
+        for offset in range(0, len(pending), args.batch_size)
+    ]
+    if args.parallel == 1:
+        for batch_number, batch in batches:
+            print(f"Filling batch {batch_number}: {batch[0]['id']}-{batch[-1]['id']}", flush=True)
+            filled = fill_batch(
+                batch,
+                args.learner_level.strip(),
+                args.model,
+                cwd,
+                skip_git_repo_check,
+                args.model_reasoning_effort,
+            )
+            total += apply_filled(lesson, filled)
+            write_json(out_path, lesson)
+            print(f"Updated {total} chunks so far.", flush=True)
+    else:
+        executor = ThreadPoolExecutor(max_workers=args.parallel)
+        futures = {}
+        try:
+            for batch_number, batch in batches:
+                print(f"Queueing batch {batch_number}: {batch[0]['id']}-{batch[-1]['id']}", flush=True)
+                future = executor.submit(
+                    fill_batch,
+                    batch,
+                    args.learner_level.strip(),
+                    args.model,
+                    cwd,
+                    skip_git_repo_check,
+                    args.model_reasoning_effort,
+                )
+                futures[future] = batch_number
+            for future in as_completed(futures):
+                batch_number = futures[future]
+                filled = future.result()
+                total += apply_filled(lesson, filled)
+                write_json(out_path, lesson)
+                print(f"Updated {total} chunks so far after batch {batch_number}.", flush=True)
+        except Exception:
+            for future in futures:
+                future.cancel()
+            raise
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     errors = validate_lesson(lesson)
     if errors:

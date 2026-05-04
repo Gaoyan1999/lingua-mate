@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -343,6 +344,90 @@ class FillLessonTests(unittest.TestCase):
         self.assertEqual(lesson["chunks"][0]["translation"], "他会想办法弄明白。")
         self.assertEqual(lesson["chunks"][0]["readThrough"][0]["original"], "He's gonna")
         self.assertEqual(lesson["chunks"][0]["vocabulary"][0]["original"], "figure it out")
+
+    def test_build_codex_command_includes_reasoning_effort(self):
+        cmd = fill_lesson_with_codex.build_codex_command(
+            cwd=ROOT,
+            model="gpt-5.4-mini",
+            schema_path=ROOT / "schema.json",
+            output_path=ROOT / "output.json",
+            prompt="Fill this batch.",
+            skip_git_repo_check=True,
+            model_reasoning_effort="low",
+        )
+
+        self.assertIn("-c", cmd)
+        self.assertIn('model_reasoning_effort="low"', cmd)
+        self.assertIn("--skip-git-repo-check", cmd)
+        self.assertIn("gpt-5.4-mini", cmd)
+
+    def test_main_parallel_fills_batches_and_writes_progress(self):
+        draft = {
+            "media": {"type": "video", "path": "/media/sample.mp4", "duration": 4.0, "title": "Sample"},
+            "languages": {"source": "English", "target": "Chinese"},
+            "chunks": [
+                {
+                    "id": f"chunk-{index + 1:04d}",
+                    "start": float(index),
+                    "end": float(index + 1),
+                    "sourceText": f"Line {index + 1}.",
+                    "translation": "",
+                    "readThrough": [],
+                    "vocabulary": [],
+                }
+                for index in range(4)
+            ],
+        }
+
+        def fake_fill_batch(batch, learner_level, model, cwd, skip_git_repo_check, model_reasoning_effort):
+            self.assertEqual(learner_level, "intermediate")
+            self.assertEqual(model, "gpt-5.4-mini")
+            self.assertEqual(model_reasoning_effort, "low")
+            return [
+                {
+                    "id": chunk["id"],
+                    "translation": f"翻译 {chunk['id']}",
+                    "readThrough": [],
+                    "vocabulary": [],
+                }
+                for chunk in batch
+            ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            draft_path = temp_path / "lesson.draft.json"
+            out_path = temp_path / "lesson.json"
+            draft_path.write_text(json.dumps(draft), encoding="utf-8")
+            argv = [
+                "fill_lesson_with_codex.py",
+                "--draft",
+                str(draft_path),
+                "--out",
+                str(out_path),
+                "--learner-level",
+                "intermediate",
+                "--batch-size",
+                "2",
+                "--parallel",
+                "2",
+                "--model-reasoning-effort",
+                "low",
+            ]
+            with mock.patch.object(sys, "argv", argv), mock.patch.object(
+                fill_lesson_with_codex,
+                "fill_batch",
+                side_effect=fake_fill_batch,
+            ):
+                exit_code = fill_lesson_with_codex.main()
+
+            self.assertEqual(exit_code, 0)
+            result = json.loads(out_path.read_text())
+            self.assertEqual([chunk["translation"] for chunk in result["chunks"]], [
+                "翻译 chunk-0001",
+                "翻译 chunk-0002",
+                "翻译 chunk-0003",
+                "翻译 chunk-0004",
+            ])
 
     def test_pending_chunks_respects_completed_chunks(self):
         lesson = {

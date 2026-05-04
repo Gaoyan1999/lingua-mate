@@ -106,7 +106,11 @@ The resource folder should contain the original video or podcast file plus final
    pnpm fill -- --draft /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.draft.json --out /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.json --learner-level intermediate
    ```
 
-   This uses `scripts/fill_lesson_with_codex.py`, runs Codex in small batches with `gpt-5.4-mini` by default, writes progress after every batch, and resumes from `--out` if it already exists. Adjust `--batch-size`, `--model`, or `--limit` when useful. Use `--overwrite` only when intentionally regenerating completed chunks.
+   This uses `scripts/fill_lesson_with_codex.py`, runs Codex in small batches with `gpt-5.4-mini` by default, writes progress after every batch, and resumes from `--out` if it already exists. Adjust `--batch-size`, `--model`, `--model-reasoning-effort`, `--parallel`, or `--limit` when useful. Use `--overwrite` only when intentionally regenerating completed chunks. For long lessons where translation quality can trade off against speed, prefer a low-reasoning parallel run:
+
+   ```bash
+   pnpm fill -- --draft /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.draft.json --out /Users/daniel/tools/test-lingua-mate/materials/S10E01/lesson.json --learner-level intermediate --model gpt-5.4-mini --model-reasoning-effort low --batch-size 20 --parallel 4
+   ```
 
 6. If using manually filled `ai_batches/` instead of the `pnpm fill` path, merge filled batches:
 
