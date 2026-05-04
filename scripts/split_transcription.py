@@ -46,7 +46,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-pause", type=float, default=0.7, help="Pause length in seconds that can split chunks.")
     parser.add_argument("--min-chunk-duration", type=float, default=1.0, help="Avoid pause splits below this duration.")
     parser.add_argument("--max-chunk-duration", type=float, default=18.0, help="Force splits above this duration.")
-    parser.add_argument("--max-sentences-per-chunk", type=int, default=2, help="Split chunks after this many sentence-ending punctuation marks. Use 0 to disable the sentence-count cap.")
     parser.add_argument("--silence-noise", default="-35dB", help="FFmpeg silencedetect noise threshold.")
     parser.add_argument("--keep-work", action="store_true", help="Keep extracted audio and Whisper transcript.")
     return parser.parse_args()
@@ -83,7 +82,6 @@ def main() -> int:
         min_pause=args.min_pause,
         min_chunk_duration=args.min_chunk_duration,
         max_chunk_duration=args.max_chunk_duration,
-        max_sentences_per_chunk=args.max_sentences_per_chunk,
     )
 
     queue = to_translation_queue(chunks)
