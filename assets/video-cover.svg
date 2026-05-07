@@ -1,0 +1,81 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .font { font-family: PingFang SC, Hiragino Sans GB, Arial Unicode MS, sans-serif; }
+      .mono { font-family: Menlo, Consolas, monospace; }
+      .title { font-size: 110px; font-weight: 800; letter-spacing: 0; }
+      .subtitle { font-size: 34px; font-weight: 500; letter-spacing: 0; }
+      .label { font-size: 24px; font-weight: 650; letter-spacing: 0; }
+      .small { font-size: 20px; font-weight: 520; letter-spacing: 0; }
+      .tiny { font-size: 18px; font-weight: 520; letter-spacing: 0; }
+    </style>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#F7F3EA"/>
+  <path d="M0 0H1920V208L0 324V0Z" fill="#111827"/>
+  <path d="M1920 1080H0V898L1920 742V1080Z" fill="#102A2B"/>
+  <path d="M1280 0H1920V1080H1614L1446 790L1514 484L1280 0Z" fill="#E84B3C"/>
+  <path d="M0 746L880 686L782 1080H0V746Z" fill="#F6B445"/>
+  <path d="M132 306H732V328H132V306Z" fill="#2B8C84"/>
+  <path d="M132 352H604V374H132V352Z" fill="#E84B3C"/>
+
+  <g class="font">
+    <text x="132" y="214" fill="#F7F3EA" class="label">LINGUA MATE / PROJECT COVER</text>
+    <text x="132" y="428" fill="#111827" class="title">我用</text>
+    <text x="132" y="546" fill="#2B8C84" class="title">Agent Skills</text>
+    <text x="132" y="664" fill="#111827" class="title">做了个</text>
+    <text x="132" y="782" fill="#E84B3C" class="title">英语听力助手</text>
+
+    <text x="136" y="872" fill="#111827" class="subtitle">视频 / 播客 → 字幕切分 → 中文精听笔记</text>
+    <text x="136" y="928" fill="#111827" class="small">把一段英文内容变成可本地学习的 Vite 页面</text>
+  </g>
+
+  <g transform="translate(930 220)">
+    <rect x="0" y="0" width="760" height="550" rx="28" fill="#111827"/>
+    <rect x="22" y="24" width="716" height="502" rx="20" fill="#FAF7EF"/>
+    <rect x="48" y="54" width="666" height="70" rx="16" fill="#ECE5D7"/>
+    <circle cx="84" cy="89" r="10" fill="#E84B3C"/>
+    <circle cx="118" cy="89" r="10" fill="#F6B445"/>
+    <circle cx="152" cy="89" r="10" fill="#2B8C84"/>
+    <text x="198" y="97" fill="#111827" class="font label">Lingua Mate Study Page</text>
+
+    <rect x="48" y="154" width="312" height="198" rx="18" fill="#102A2B"/>
+    <path d="M184 218L258 253L184 288V218Z" fill="#F7F3EA"/>
+    <rect x="72" y="315" width="238" height="8" rx="4" fill="#2B8C84"/>
+    <rect x="72" y="315" width="98" height="8" rx="4" fill="#F6B445"/>
+
+    <rect x="388" y="154" width="326" height="86" rx="16" fill="#FFFFFF"/>
+    <text x="412" y="189" fill="#111827" class="font small">I just couldn't catch that line.</text>
+    <text x="412" y="221" fill="#2B8C84" class="font small">这句我刚才怎么也没听清。</text>
+
+    <rect x="388" y="264" width="326" height="88" rx="16" fill="#FFFFFF"/>
+    <text x="412" y="300" fill="#111827" class="font small">couldn't catch</text>
+    <text x="412" y="330" fill="#E84B3C" class="font small">连读 + 弱读：听力高频卡点</text>
+
+    <rect x="48" y="384" width="666" height="112" rx="18" fill="#FFFFFF"/>
+    <text x="76" y="426" fill="#111827" class="font label">Read-through Notes</text>
+    <rect x="78" y="454" width="124" height="12" rx="6" fill="#E84B3C"/>
+    <rect x="222" y="454" width="182" height="12" rx="6" fill="#F6B445"/>
+    <rect x="424" y="454" width="104" height="12" rx="6" fill="#2B8C84"/>
+    <rect x="78" y="480" width="268" height="10" rx="5" fill="#D9D1C2"/>
+    <rect x="366" y="480" width="214" height="10" rx="5" fill="#D9D1C2"/>
+  </g>
+
+  <g transform="translate(1060 820)" class="font">
+    <rect x="0" y="0" width="184" height="56" rx="28" fill="#F7F3EA"/>
+    <text x="32" y="37" fill="#111827" class="label">Whisper</text>
+    <path d="M208 28H278" stroke="#F7F3EA" stroke-width="8" stroke-linecap="round"/>
+    <path d="M264 14L282 28L264 42" stroke="#F7F3EA" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="306" y="0" width="150" height="56" rx="28" fill="#F7F3EA"/>
+    <text x="345" y="37" fill="#111827" class="label">Codex</text>
+    <path d="M480 28H550" stroke="#F7F3EA" stroke-width="8" stroke-linecap="round"/>
+    <path d="M536 14L554 28L536 42" stroke="#F7F3EA" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="578" y="0" width="118" height="56" rx="28" fill="#F7F3EA"/>
+    <text x="617" y="37" fill="#111827" class="label">Vite</text>
+  </g>
+
+  <g transform="translate(1518 904)">
+    <rect x="0" y="0" width="236" height="56" rx="12" fill="#F7F3EA"/>
+    <text x="24" y="36" fill="#111827" class="font mono tiny">skill: lingua-mate</text>
+  </g>
+</svg>
