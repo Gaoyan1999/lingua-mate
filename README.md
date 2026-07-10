@@ -1,5 +1,7 @@
 # Lingua Mate
 
+Intro video: https://www.bilibili.com/video/BV1yTRzBpEPk
+
 Lingua Mate is a Codex skill package that turns an English video or podcast into a local language-learning web page. It creates transcript chunks, Chinese translations, connected-speech notes, and vocabulary notes, then shows them in a local Vite learner app.
 
 Current input support:
