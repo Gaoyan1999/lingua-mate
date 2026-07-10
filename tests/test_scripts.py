@@ -34,6 +34,40 @@ class PrepareMediaTests(unittest.TestCase):
         self.assertEqual(chunks[0]["vocabulary"], [])
         self.assertEqual(chunks[1]["start"], 6.2)
 
+    def test_chunk_segments_keeps_sentence_complete_past_max_duration(self):
+        segments = [
+            prepare_media.Segment(
+                0.0,
+                8.0,
+                "Today on the interface we'll be looking at how the Trump assassination attempt reveals",
+            ),
+            prepare_media.Segment(8.1, 13.5, "the conspiracy theory playbook."),
+            prepare_media.Segment(14.4, 17.0, "Meta is spying on its employees."),
+        ]
+
+        chunks = prepare_media.chunk_segments(segments, min_pause=0.7, max_chunk_duration=10.0)
+
+        self.assertEqual(len(chunks), 2)
+        self.assertEqual(
+            chunks[0]["sourceText"],
+            (
+                "Today on the interface we'll be looking at how the Trump assassination attempt reveals "
+                "the conspiracy theory playbook."
+            ),
+        )
+        self.assertEqual(chunks[1]["sourceText"], "Meta is spying on its employees.")
+
+    def test_chunk_segments_does_not_split_on_pause_before_sentence_end(self):
+        segments = [
+            prepare_media.Segment(0.0, 2.0, "This update reveals"),
+            prepare_media.Segment(3.0, 4.5, "the whole story."),
+        ]
+
+        chunks = prepare_media.chunk_segments(segments, min_pause=0.7, max_chunk_duration=18.0)
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0]["sourceText"], "This update reveals the whole story.")
+
     def test_build_lesson_uses_media_type(self):
         lesson = prepare_media.build_lesson(
             ROOT / "sample.mp3",
