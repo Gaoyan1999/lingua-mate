@@ -870,6 +870,42 @@ export default function App() {
     function onKeyDown(event: globalThis.KeyboardEvent) {
       if (event.repeat) return;
 
+      const isCommandSentenceKey = event.metaKey && (event.code === "ArrowLeft" || event.code === "ArrowRight");
+      if (isCommandSentenceKey) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const media = mediaRef.current;
+        const direction = event.code === "ArrowRight" ? 1 : -1;
+        seekToChunkOffset(direction, media ? !media.paused : false);
+        return;
+      }
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const media = mediaRef.current;
+        if (!media) return;
+        setCurrentTime(media.currentTime);
+
+        if (media.paused) {
+          void media.play();
+        } else {
+          media.pause();
+        }
+        return;
+      }
+
+      if (event.code === "ArrowLeft" || event.code === "ArrowRight") {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const direction = event.code === "ArrowRight" ? 1 : -1;
+        seekBy(direction * seekStep);
+        return;
+      }
+
       if (isSettingsOpen) {
         if (event.code === "Escape") {
           event.preventDefault();
@@ -884,12 +920,8 @@ export default function App() {
         target?.tagName === "TEXTAREA" ||
         target?.tagName === "SELECT" ||
         target?.isContentEditable;
-      const isButtonTarget = target?.tagName === "BUTTON";
-      const isSeekKey = event.code === "ArrowLeft" || event.code === "ArrowRight";
-      const isTranscriptRowTarget = Boolean(target?.closest(".lyric-row-main"));
-      const isTranscriptPlayPauseKey = isTranscriptRowTarget && event.code === "Space";
 
-      if (isTextEntryTarget || (isButtonTarget && !isSeekKey && !isTranscriptPlayPauseKey)) return;
+      if (isTextEntryTarget || target?.tagName === "BUTTON") return;
 
       const isPlainKey = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
       if (
@@ -908,37 +940,22 @@ export default function App() {
         setIsStudyOpen((value) => !value);
         return;
       }
+    }
 
-      const media = mediaRef.current;
-      if (!media) return;
-
-      if (event.code === "Space") {
-        event.preventDefault();
-        setCurrentTime(media.currentTime);
-
-        if (media.paused) {
-          void media.play();
-        } else {
-          media.pause();
-        }
-        return;
-      }
-
-      if (event.code !== "ArrowLeft" && event.code !== "ArrowRight") return;
-
+    function onKeyUp(event: globalThis.KeyboardEvent) {
+      const isCommandSentenceKey = event.metaKey && (event.code === "ArrowLeft" || event.code === "ArrowRight");
+      const isArrowKey = event.code === "ArrowLeft" || event.code === "ArrowRight";
+      if (event.code !== "Space" && !isCommandSentenceKey && !isArrowKey) return;
       event.preventDefault();
-
-      const direction = event.code === "ArrowRight" ? 1 : -1;
-      if (event.metaKey) {
-        seekToChunkOffset(direction, !media.paused);
-        return;
-      }
-
-      seekBy(direction * seekStep);
+      event.stopPropagation();
     }
 
     window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+    };
   }, [
     activeIndex,
     isSettingsOpen,

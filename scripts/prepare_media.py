@@ -173,6 +173,38 @@ def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+SENTENCE_END_RE = re.compile(r"[.!?…]+[\"')\]}]*$")
+SENTENCE_END_ABBREVIATIONS = {
+    "dr",
+    "e.g",
+    "etc",
+    "i.e",
+    "jr",
+    "mr",
+    "mrs",
+    "ms",
+    "no",
+    "prof",
+    "sr",
+    "st",
+    "u.k",
+    "u.s",
+    "vs",
+}
+
+
+def text_ends_sentence(value: str) -> bool:
+    text = normalize_text(value).rstrip("\"')]} ")
+    if not SENTENCE_END_RE.search(text):
+        return False
+    if not text.endswith("."):
+        return True
+    match = re.search(r"([A-Za-z](?:[A-Za-z.]*[A-Za-z])?)\.$", text)
+    if not match:
+        return True
+    return match.group(1).lower() not in SENTENCE_END_ABBREVIATIONS
+
+
 def has_detected_pause(prev_end: float, next_start: float, silences: Iterable[Silence], min_silence: float) -> bool:
     for silence in silences:
         if silence.end < prev_end:
@@ -199,6 +231,9 @@ def chunk_segments(
     chunks: list[dict[str, Any]] = []
     current: list[Segment] = [segments[0]]
 
+    def current_text() -> str:
+        return normalize_text(" ".join(segment.text for segment in current))
+
     def flush() -> None:
         nonlocal current
         if not current:
@@ -210,7 +245,7 @@ def chunk_segments(
                 "id": f"chunk-{len(chunks) + 1:04d}",
                 "start": round(start, 3),
                 "end": round(end, 3),
-                "sourceText": normalize_text(" ".join(segment.text for segment in current)),
+                "sourceText": current_text(),
                 "translation": "",
                 "readThrough": [],
                 "vocabulary": [],
@@ -224,8 +259,9 @@ def chunk_segments(
         duration_if_added = segment.end - current[0].start
         current_duration = previous.end - current[0].start
         pause_boundary = gap >= min_pause or has_detected_pause(previous.end, segment.start, silences, min_pause)
-        split_for_pause = pause_boundary and current_duration >= min_chunk_duration
-        split_for_length = duration_if_added > max_chunk_duration
+        sentence_boundary = text_ends_sentence(current_text())
+        split_for_pause = pause_boundary and current_duration >= min_chunk_duration and sentence_boundary
+        split_for_length = duration_if_added > max_chunk_duration and current_duration >= min_chunk_duration and sentence_boundary
 
         if split_for_pause or split_for_length:
             flush()
