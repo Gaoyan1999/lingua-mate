@@ -23,6 +23,31 @@ import download_youtube
 
 
 class PrepareMediaTests(unittest.TestCase):
+    def test_whisper_command_prefers_mlx_whisper_with_turbo(self):
+        with mock.patch.object(prepare_media.shutil, "which", lambda name: f"/bin/{name}"):
+            cmd = prepare_media.whisper_command(Path("audio.wav"), Path("out"), None, "en")
+
+        self.assertEqual(cmd[0], "mlx_whisper")
+        self.assertEqual(cmd[cmd.index("--model") + 1], "mlx-community/whisper-large-v3-turbo")
+        self.assertEqual(cmd[-2:], ["--language", "en"])
+
+    def test_whisper_command_maps_model_names_to_mlx_repos(self):
+        with mock.patch.object(prepare_media.shutil, "which", lambda name: f"/bin/{name}"):
+            base = prepare_media.whisper_command(Path("audio.wav"), Path("out"), "base", "auto")
+            custom = prepare_media.whisper_command(Path("audio.wav"), Path("out"), "me/my-whisper", "auto")
+
+        self.assertEqual(base[base.index("--model") + 1], "mlx-community/whisper-base-mlx")
+        self.assertEqual(custom[custom.index("--model") + 1], "me/my-whisper")
+        self.assertNotIn("--language", base)
+
+    def test_whisper_command_falls_back_to_openai_whisper_with_base(self):
+        with mock.patch.object(prepare_media.shutil, "which", lambda name: None if name == "mlx_whisper" else f"/bin/{name}"):
+            cmd = prepare_media.whisper_command(Path("audio.wav"), Path("out"), None, "en")
+
+        self.assertEqual(cmd[0], "whisper")
+        self.assertEqual(cmd[cmd.index("--model") + 1], "base")
+        self.assertIn("--output_format", cmd)
+
     def test_chunk_segments_splits_on_pause(self):
         _, segments = prepare_media.load_whisper_segments(ROOT / "tests" / "fixtures" / "whisper_sample.json")
         chunks = prepare_media.chunk_segments(segments, min_pause=0.7)

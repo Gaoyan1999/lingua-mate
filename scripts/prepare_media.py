@@ -114,27 +114,64 @@ def detect_silences(audio_path: Path, min_silence: float, noise: str) -> list[Si
     return silences
 
 
+# mlx-whisper runs on the Apple GPU and is much faster than openai-whisper on the CPU.
+MLX_WHISPER_REPOS = {
+    "tiny": "mlx-community/whisper-tiny-mlx",
+    "base": "mlx-community/whisper-base-mlx",
+    "small": "mlx-community/whisper-small-mlx",
+    "medium": "mlx-community/whisper-medium-mlx",
+    "large-v3": "mlx-community/whisper-large-v3-mlx",
+    "turbo": "mlx-community/whisper-large-v3-turbo",
+}
+# mlx-whisper is fast enough to use turbo, which is far more accurate than base.
+DEFAULT_MLX_MODEL = "turbo"
+DEFAULT_OPENAI_MODEL = "base"
+
+
+def whisper_command(
+    audio_path: Path,
+    output_dir: Path,
+    model: str | None,
+    source_language: str,
+) -> list[str]:
+    if shutil.which("mlx_whisper"):
+        name = model or DEFAULT_MLX_MODEL
+        cmd = [
+            "mlx_whisper",
+            str(audio_path),
+            "--model",
+            MLX_WHISPER_REPOS.get(name, name),
+            "--output-format",
+            "json",
+            "--output-dir",
+            str(output_dir),
+            "--verbose",
+            "False",
+        ]
+    else:
+        cmd = [
+            *(["whisper"] if shutil.which("whisper") else [sys.executable, "-m", "whisper"]),
+            str(audio_path),
+            "--model",
+            model or DEFAULT_OPENAI_MODEL,
+            "--output_format",
+            "json",
+            "--output_dir",
+            str(output_dir),
+        ]
+    if source_language.lower() != "auto":
+        cmd.extend(["--language", source_language])
+    return cmd
+
+
 def run_whisper(
     audio_path: Path,
     output_dir: Path,
-    model: str,
+    model: str | None,
     source_language: str,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    whisper_command = ["whisper"] if shutil.which("whisper") else [sys.executable, "-m", "whisper"]
-    cmd = [
-        *whisper_command,
-        str(audio_path),
-        "--model",
-        model,
-        "--output_format",
-        "json",
-        "--output_dir",
-        str(output_dir),
-    ]
-    if source_language.lower() != "auto":
-        cmd.extend(["--language", source_language])
-    run_command(cmd)
+    run_command(whisper_command(audio_path, output_dir, model, source_language))
     transcript = output_dir / f"{audio_path.stem}.json"
     if not transcript.exists():
         candidates = sorted(output_dir.glob("*.json"))
@@ -321,7 +358,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out", type=Path, required=True, help="Output directory for Library artifacts.")
     parser.add_argument("--source-language", default="en", help="Source language for Whisper. Default: en.")
     parser.add_argument("--target-language", default="Chinese", help="Target language for translations/explanations.")
-    parser.add_argument("--whisper-model", default="base", help="Local Whisper model name.")
+    parser.add_argument(
+        "--whisper-model",
+        help="Whisper model: tiny, base, small, medium, large-v3, turbo, or an mlx-community repo. "
+        "Default: turbo with mlx-whisper, base with openai-whisper.",
+    )
     parser.add_argument("--transcript-json", type=Path, help="Use an existing Whisper JSON transcript instead of running Whisper.")
     parser.add_argument("--min-pause", type=float, default=0.7, help="Pause length in seconds that can split chunks.")
     parser.add_argument("--min-chunk-duration", type=float, default=1.0, help="Avoid pause splits below this duration.")

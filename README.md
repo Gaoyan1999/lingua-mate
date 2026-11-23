@@ -78,7 +78,7 @@ Install these before asking Codex to process media:
 
 - Python 3
 - FFmpeg and FFprobe
-- A local `whisper` CLI available on `PATH`
+- A local Whisper CLI on `PATH`: `mlx_whisper` (preferred, fast on Apple Silicon; `uv tool install mlx-whisper --python 3.12`) or `whisper` (openai-whisper, CPU fallback)
 - Node.js and pnpm
 - Codex CLI
 
