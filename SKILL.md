@@ -20,7 +20,7 @@ If the user provides a YouTube URL instead of a local file, ask for the learner'
 Check these before processing:
 
 - `ffmpeg` and `ffprobe` are installed.
-- A local `whisper` CLI is installed and available on `PATH`.
+- A local Whisper CLI is on `PATH`. Prefer `mlx_whisper` (Apple GPU, uses the `turbo` model by default); `whisper` (openai-whisper on CPU, `base` model by default) is the fallback.
 - Node.js and `pnpm` are available for the Vite template.
 - The user has permission to process the media.
 - For private or high-quality Bilibili videos, the user may need to provide a `SESSDATA` value or set `BILIBILI_SESSDATA`.

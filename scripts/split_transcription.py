@@ -41,7 +41,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out", type=Path, help="Output JSON path. Default: materials/<media-stem>/chunks.json.")
     parser.add_argument("--work-dir", type=Path, default=Path(".lingua-mate-work"), help="Intermediate files directory.")
     parser.add_argument("--source-language", default="en", help="Whisper language code. Default: en.")
-    parser.add_argument("--whisper-model", default="base", help="Local Whisper model. Default: base.")
+    parser.add_argument(
+        "--whisper-model",
+        help="Whisper model. Default: turbo with mlx-whisper, base with openai-whisper.",
+    )
     parser.add_argument("--transcript-json", type=Path, help="Reuse an existing Whisper JSON transcript.")
     parser.add_argument("--min-pause", type=float, default=0.7, help="Pause length in seconds that can split chunks.")
     parser.add_argument("--min-chunk-duration", type=float, default=1.0, help="Avoid pause splits below this duration.")
@@ -70,7 +73,7 @@ def main() -> int:
     if args.transcript_json:
         transcript_path = args.transcript_json.expanduser().resolve()
     else:
-        print(f"Running local Whisper model '{args.whisper_model}'...")
+        print(f"Running local Whisper model '{args.whisper_model or 'default'}'...")
         transcript_path = run_whisper(audio_path, work_dir / "whisper", args.whisper_model, args.source_language)
 
     print("Loading transcript and detecting pauses...")
